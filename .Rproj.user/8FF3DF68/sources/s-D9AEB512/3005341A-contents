@@ -1,9 +1,0 @@
-da_cells <- getDAcells(
-  X = X.sco,
-  cell.labels = as.character(Sco@meta.data$response),
-  labels.1 = as.character(labels_res),
-  labels.2 = as.character(labels_nonres),
-  k.vector = seq(50, 500, 50),
-  plot.embedding = X.umap
-)
-
