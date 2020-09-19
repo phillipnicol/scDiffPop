@@ -98,7 +98,7 @@ scDiffPop <- function(Sco) {
   # sco.sub = GSE145281[, GSE145281$seurat_clusters %in% c(10,11)]
   responders.enrichment = nonresponders.enrichment = list()
   responders.topgenes = nonresponders.topgenes = list()
-  seurat.clusters= unique(Sco$seurat_clusters) %>% as.character
+  Sco@meta.data$seurat_clusters <- sapply(Sco@meta.data$cellType, function(x) which(cell_types == x))
   for (i in 1:nrow(Tree)) {
     cat("ITERATION: ", i, "\n")
     subtree <- as.vector(DFS(Tree, i, cell_types))
@@ -310,9 +310,10 @@ DESeq2DETest <- function(
 
 mydeg <- function(sco.curr) {
   exp.curr1 = sco.curr@assays$RNA@counts[sco.curr@assays$RNA@var.features,]
+  print(dim(exp.curr1))
   meta.dt1 = sco.curr@meta.data %>%
     as.data.table() %>%
-    .[,.(binaryResponse=response, patient=patient)]
+    .[,.(binaryResponse=binaryResponse, patient=patient)]
 
   meta.curr = list()
   exp.curr2 = list()
@@ -322,11 +323,14 @@ mydeg <- function(sco.curr) {
     meta.curr[[patient]] = meta.dt1[inx[1],]
   }
   meta.dt = do.call(rbind, meta.curr)
+  print(dim(meta.dt))
   exp.curr = t(do.call(rbind, exp.curr2))
   responders = meta.dt[binaryResponse==1]$patient
   nonresponders = meta.dt[binaryResponse==0]$patient
   print(responders)
   print(nonresponders)
+  print(dim(exp.curr))
+  print(exp.curr)
   deseq.out = DESeq2DETest(data.use=exp.curr[,c(responders,nonresponders)], cells.1=responders, cells.2=nonresponders)
   deseq.dt = deseq.out %>%
     as.data.frame %>%

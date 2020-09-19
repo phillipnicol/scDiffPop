@@ -6,5 +6,7 @@ import(ggraph)
 import(dplyr)
 import(scatterpie)
 import(data.table)
+import(ggplot2)
+
 
 
