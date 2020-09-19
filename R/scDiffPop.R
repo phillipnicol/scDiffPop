@@ -227,10 +227,10 @@ Mode <- function(x) {
 
 SplitGroup <- function(Sco_sub, ixs) {
   #Find variable features
-  Seurat::FindVariableFeatures(Sco_sub, verbose = FALSE)
+  Sco_sub <- Seurat::FindVariableFeatures(Sco_sub, verbose = FALSE)
 
   #Scale data (presumably for PCA)
-  Seurat::ScaleData(Sco_sub)
+  Sco_sub <- Seurat::ScaleData(Sco_sub)
 
   #Run PCA on the variable features. Get 50 dimensional embeddings
   Seurat::RunPCA(Sco_sub, pc.genes = Sco_sub@assays$RNA@var.features, npcs = 50, verbose = FALSE)
