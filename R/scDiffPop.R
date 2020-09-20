@@ -139,8 +139,8 @@ scDiffPop <- function(Sco) {
     sco.sub = Sco[,Sco$seurat_clusters %in% subtree] %>%
       FindVariableFeatures(selection.method = "vst", nfeatures = 2000)
     ncells <- nrow(sco.sub@meta.data)
-    Counts[i,1] <- nrow(sco.sub@meta.data[sco.sub@meta.data$binaryResponse == 0,])/ncells
-    Counts[i,2] <- nrow(sco.sub@meta.data[sco.sub@meta.data$binaryResponse == 1,])/ncells
+    Counts[i,1] <- nrow(sco.sub@meta.data[sco.sub@meta.data$binaryResponse == 0,])
+    Counts[i,2] <- nrow(sco.sub@meta.data[sco.sub@meta.data$binaryResponse == 1,])
     print(Counts[i,1])
     print(Counts[i,2])
 
@@ -157,12 +157,21 @@ scDiffPop <- function(Sco) {
   out$nonresponders.topgenes <- nonresponders.topgenes
   out$contingency.tables <- contingency.tables
 
+  p0 <- length(unique(Sco@meta.data$patient[Sco@meta.data$binaryResponse == 0]))
+  p1 <- length(unique(Sco@meta.data$patient[Sco@meta.data$binaryResponse == 1]))
+
+
   xy <- layout_as_tree(G)
   V(G)$x <- xy[, 1]
   V(G)$y <- xy[, 2]
 
   pht1_size <- length(which(Sco@meta.data$binaryResponse == 0)); pht2_size <- length(which(Sco@meta.data$binaryResponse == 1))
   Counts <- rbind(c(pht1_size, pht2_size), Counts)
+
+  Counts_c <- Counts
+  Counts[,1] <- (Counts[,1]/p0) / (Counts[,1]/p0 + Counts[,2]/p1)
+  Counts[,2] <- (Counts[,2]/p1) / (Counts_c[,1]/p0 + Counts[,2]/p1)
+
   V(G)$pht1 <- Counts[,1]
   V(G)$pht2 <- Counts[,2]
 
