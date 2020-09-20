@@ -77,10 +77,6 @@ scDiffPop <- function(Sco) {
   TreeIG <- cbind(Tree[,2], Tree[,1])
   TreeIG <- as.matrix(TreeIG)
 
-  print(Tree)
-  print(DFS(Tree,0,cell_types))
-  print(DFS(Tree,1,cell_types))
-
   G <- igraph::graph_from_edgelist(TreeIG)
 
   binaryResponse <- Sco$response
@@ -98,7 +94,7 @@ scDiffPop <- function(Sco) {
   # sco.sub = GSE145281[, GSE145281$seurat_clusters %in% c(10,11)]
   responders.enrichment = nonresponders.enrichment = list()
   responders.topgenes = nonresponders.topgenes = list()
-  Sco@meta.data$seurat_clusters <- sapply(Sco@meta.data$cellType, function(x) which(cell_types == x))
+  contingency.tables <- list()
   for (i in 1:nrow(Tree)) {
     cat("ITERATION: ", i, "\n")
     subtree <- as.vector(DFS(Tree, i, cell_types))
@@ -135,6 +131,7 @@ scDiffPop <- function(Sco) {
     responders.enrichment[[i]] <- fisher.test(C, alternative = "greater")$p.value
     nonresponders.enrichment[[i]] <- fisher.test(C, alternative = "less")$p.value
     print(C)
+    contingency.tables[[i]] <- C
 
     print(responders.enrichment[[i]])
     print(nonresponders.enrichment[[i]])
@@ -158,11 +155,14 @@ scDiffPop <- function(Sco) {
   out$nonresponders.enrichment <- nonresponders.enrichment
   out$responders.topgenes <- responders.topgenes
   out$nonresponders.topgenes <- nonresponders.topgenes
+  out$contingency.tables <- contingency.tables
 
   xy <- layout_as_tree(G)
   V(G)$x <- xy[, 1]
   V(G)$y <- xy[, 2]
 
+  pht1_size <- length(which(Sco@meta.data$binaryResponse == 0)); pht2_size <- length(which(Sco@meta.data$binaryResponse == 1))
+  Counts <- rbind(c(pht1_size, pht2_size), Counts)
   V(G)$pht1 <- Counts[,1]
   V(G)$pht2 <- Counts[,2]
 
@@ -188,12 +188,16 @@ scDiffPop <- function(Sco) {
     cols = c("pht1", "pht2"),
     data = igraph::as_data_frame(G, "vertices"),
     colour = NA,
-    pie_scale = 0.75
+    pie_scale = 0.75,
+    legend_name = "Phenotype"
   )
+  p <- p + scale_fill_manual(values = c("red", "blue"),
+                             labels = c(unique_phenotype[1], unique_phenotype[2]))
   p <- p + geom_node_label(aes(label = name, angle = 90), repel = FALSE, nudge_y = 0.25, col = "midnightblue")
   p <- p + theme_graph()
   plot(p)
 
+  out$counts <- Counts
   out$piechart <- p
 
 
@@ -208,9 +212,9 @@ scDiffPop <- function(Sco) {
   #p <- p + geom_node_text(aes(x = x*1.005, y=y*1.005, label = name, angle = 90),
   #p <- p+ geom_node_label(aes(label = V(G)$Blood), repel = TRUE, col = "red")
   p <- p + geom_node_text(aes(label = V(G)$resp), repel = FALSE, nudge_x = -0.3, nudge_y = 0, col = "red")
-  p <- p + geom_node_text(aes(label = V(G)$nonresp), repel = FALSE, nudge_x = -0.3, nudge_y = 0.1, col = "blue")
+  p <- p + geom_node_text(aes(label = V(G)$nonresp), repel = FALSE, nudge_x = -0.3, nudge_y = 0.15, col = "blue")
   p <- p + geom_node_point(size = 1)
-  p <- p + geom_node_label(aes(label = name, angle = 90), repel = TRUE, nudge_y = 0.25, col = "midnightblue")
+  p <- p + geom_node_label(aes(label = name, angle = 90), repel = FALSE, nudge_y = 0.25, col = "midnightblue")
   #p <- p + geom_node_label(aes(label = name, angle = 90), repel = FALSE, nudge_y = 0.25, col = "midnightblue")
   p <- p + theme_graph()
 
@@ -229,7 +233,7 @@ SplitGroup <- function(Sco_sub, ixs) {
   #Find variable features
   Sco_sub <- Seurat::FindVariableFeatures(Sco_sub, verbose = FALSE)
 
-  #Scale data (presumably for PCA)
+  #Scale data
   Sco_sub <- Seurat::ScaleData(Sco_sub)
 
   #Run PCA on the variable features. Get 50 dimensional embeddings
@@ -330,7 +334,6 @@ mydeg <- function(sco.curr) {
   print(responders)
   print(nonresponders)
   print(dim(exp.curr))
-  print(exp.curr)
   deseq.out = DESeq2DETest(data.use=exp.curr[,c(responders,nonresponders)], cells.1=responders, cells.2=nonresponders)
   deseq.dt = deseq.out %>%
     as.data.frame %>%
