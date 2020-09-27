@@ -26,7 +26,7 @@ scDiffPop <- function(Sco) {
     #Get group with most clusters
     ixs <- which(group == Mode(group))
     print(group)
-    split <- SplitGroup(subset(Sco, subset = seurat_clusters %in% (ixs-1)), ixs)
+    split <- SplitGroup(Sco[,Sco$seurat_clusters %in% (ixs - 1)], ixs)
 
     if(length(unique(split)) > 1) {
       counter <- counter + 1
@@ -74,6 +74,8 @@ scDiffPop <- function(Sco) {
   colnames(Tree) <- c("Child", "Parent")
   rownames(Tree) <- c(1:nrow(Tree))
 
+  print(Tree)
+
   TreeIG <- cbind(Tree[,2], Tree[,1])
   TreeIG <- as.matrix(TreeIG)
 
@@ -94,6 +96,7 @@ scDiffPop <- function(Sco) {
   # sco.sub = GSE145281[, GSE145281$seurat_clusters %in% c(10,11)]
   responders.enrichment = nonresponders.enrichment = list()
   responders.topgenes = nonresponders.topgenes = list()
+  GSEA_list <- list()
   contingency.tables <- list()
   for (i in 1:nrow(Tree)) {
     cat("ITERATION: ", i, "\n")
@@ -109,20 +112,26 @@ scDiffPop <- function(Sco) {
 
     ## Perform differential expression
     deg.curr = mydeg(sco.sub)
-    deg.curr = deg.curr[padj<0.3]
+    #deg.curr = deg.curr[padj<0.1]
 
     ## Find markers in children
     seurat.clust.cell.1 = subtree
     Idents(sco.sub) = ifelse(sco.sub$seurat_clusters %in% seurat.clust.cell.1, 1 ,2) %>% as.factor
-    markers.curr = FindAllMarkers(sco.sub, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25) ## this will give markers of both cell.1 (child1) and cell.2 (child2)
-    markers.top  = markers.curr %>% group_by(cluster) %>% top_n(n = 700, wt = avg_logFC)
-    term2gene  = markers.top %>%  as.data.table %>%
-      .[,.(term=cluster,gene=gene)] %>% as.data.frame
+    markers.curr <- Seurat::FindMarkers(sco.sub, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25, ident.1 = 1)
+    #markers.curr = FindAllMarkers(sco.sub, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25) ## this will give markers of both cell.1 (child1) and cell.2 (child2)
+    #markers.top  = markers.curr %>% group_by(cluster) %>% top_n(n = 700, wt = avg_logFC)
+    #term2gene  = markers.top %>%  as.data.table %>%
+      #.[,.(term=cluster,gene=gene)] %>% as.data.frame
+    term2gene <- matrix(0, nrow = nrow(markers.curr), ncol = 2) %>% as.data.frame
+    term2gene[,1] <- 1; term2gene[,2] <- rownames(markers.curr)
+    colnames(term2gene) <- c("term", "gene")
+    if(nrow(term2gene) >= 50) {
+      term2gene <- term2gene[1:50,]
+    }
 
     # Make contingency table
     a <- length(which(deg.curr[log2FoldChange > 0]$gene %in% term2gene[term2gene[,1] == 1,2]))
     b <- length(which(deg.curr[log2FoldChange < 0]$gene %in% term2gene[term2gene[,1] == 1,2]))
-
 
     c <- length(deg.curr[log2FoldChange > 0]$gene) - a
     d <- length(deg.curr[log2FoldChange < 0]$gene) - b
@@ -133,8 +142,38 @@ scDiffPop <- function(Sco) {
     print(C)
     contingency.tables[[i]] <- C
 
+
     print(responders.enrichment[[i]])
     print(nonresponders.enrichment[[i]])
+
+    #term2gene <- term2gene[term2gene$term == 1,]
+    # GSEA
+    print(term2gene)
+    geneList <- deg.curr$stat
+    names(geneList) <- deg.curr$gene
+    geneList <- sort(geneList, decreasing = TRUE)
+    print(geneList)
+    print(intersect(names(geneList), term2gene$gene))
+    if(length(intersect(names(geneList), term2gene$gene)) == 0) {
+      gsea_result <- list()
+      gsea_result$pvalue <- 1.0
+      gsea_result$ES <- 0.0
+      GSEA_list[[i]] <- gsea_result
+    }
+    else {
+    GSEA_list[[i]] <- clusterProfiler::GSEA(geneList, TERM2GENE = term2gene, pvalueCutoff = 1)
+
+    gsea_result <- list()
+    if(length(GSEA_list[[i]]@result$pvalue) == 0) {
+      gsea_result$pvalue <- 1.0
+      gsea_result$ES <- 0.0
+    }
+    else {
+      gsea_result$ES <- GSEA_list[[i]]@result$enrichmentScore
+      gsea_result$pvalue <- GSEA_list[[i]]@result$pvalue
+    }
+    print(gsea_result)
+    GSEA_list[[i]] <- gsea_result }
 
     sco.sub = Sco[,Sco$seurat_clusters %in% subtree] %>%
       FindVariableFeatures(selection.method = "vst", nfeatures = 2000)
@@ -156,6 +195,7 @@ scDiffPop <- function(Sco) {
   out$responders.topgenes <- responders.topgenes
   out$nonresponders.topgenes <- nonresponders.topgenes
   out$contingency.tables <- contingency.tables
+  out$GSEA <- GSEA_list
 
   p0 <- length(unique(Sco@meta.data$patient[Sco@meta.data$binaryResponse == 0]))
   p1 <- length(unique(Sco@meta.data$patient[Sco@meta.data$binaryResponse == 1]))
@@ -177,8 +217,11 @@ scDiffPop <- function(Sco) {
 
   ix <- which(nonresponders.enrichment < 0.05 | responders.enrichment < 0.05)
 
+  #Save name for later
+  name_clean <- V(G)$name
+
   for(i in ix) {
-    s <- min(nonresponders.enrichment[[i]], responders.enrichment[[i]])
+    s <- GSEA_list[[i]]$pvalue
     if(s < 0.001) {
       V(G)$name[i+1] <- paste(V(G)$name[i+1], "***", sep="")
     }
@@ -204,7 +247,6 @@ scDiffPop <- function(Sco) {
                              labels = c(unique_phenotype[1], unique_phenotype[2]))
   p <- p + geom_node_label(aes(label = name, angle = 90), repel = FALSE, nudge_y = 0.25, col = "midnightblue")
   p <- p + theme_graph()
-  plot(p)
 
   out$counts <- Counts
   out$piechart <- p
@@ -229,6 +271,21 @@ scDiffPop <- function(Sco) {
 
   out$genegraph <- p
 
+  #Now do GSEA graph
+  V(G)$name <- name_clean
+  V(G)$ES <- sapply(GSEA_list, function(x) {round(x$ES,2)})
+  V(G)$ES <- c("", V(G)$ES)
+  p <- ggraph(G, "manual", x=  V(G)$x, y=V(G)$y) + geom_edge_link() #+ geom_node_point(aes(size = 2, col = names(effect)))
+  #p <- p + geom_node_text(aes(x = x*1.005, y=y*1.005, label = name, angle = 90),
+  #p <- p+ geom_node_label(aes(label = V(G)$Blood), repel = TRUE, col = "red")
+  p <- p + geom_node_text(aes(label = V(G)$ES), repel = FALSE, nudge_x = -0.1, nudge_y = 0, col = "red")
+  p <- p + geom_node_point(size = 1)
+  p <- p + geom_node_label(aes(label = name, angle = 90), repel = FALSE, nudge_y = 0.25, col = "midnightblue")
+  #p <- p + geom_node_label(aes(label = name, angle = 90), repel = FALSE, nudge_y = 0.25, col = "midnightblue")
+  p <- p + theme_graph()
+
+  out$GSEAgraph <- p
+
   return(out)
 }
 
@@ -246,8 +303,8 @@ SplitGroup <- function(Sco_sub, ixs) {
   Sco_sub <- Seurat::ScaleData(Sco_sub)
 
   #Run PCA on the variable features. Get 50 dimensional embeddings
-  Seurat::RunPCA(Sco_sub, pc.genes = Sco_sub@assays$RNA@var.features, npcs = 50, verbose = FALSE)
-  embeddings <- Seurat::Embeddings(object = Sco_sub, reduction = 'pca')[,1:20]
+  Sco_sub <- Seurat::RunPCA(Sco_sub, verbose = FALSE)
+  embeddings <- Seurat::Embeddings(object = Sco_sub, reduction = 'pca')[,1:50]
 
   #Cluster via k means
   km <- kmeans(embeddings, centers = 2, iter.max = 10)$cluster
@@ -294,12 +351,9 @@ DESeq2DETest <- function(
   # if (!PackageCheck('DESeq2', error = FALSE)) {
   #   stop("Please install DESeq2 - learn more at https://bioconductor.org/packages/release/bioc/html/DESeq2.html")
   # }
-  print("HI1")
   group.info <- data.frame(row.names = c(cells.1, cells.2))
-  print("HI2")
   print(group.info)
   group.info[cells.1, "group"] <- "Group1"
-  print("HI3")
   group.info[cells.2, "group"] <- "Group2"
   group.info[, "group"] <- factor(x = group.info[, "group"])
   group.info$wellKey <- rownames(x = group.info)
@@ -352,3 +406,5 @@ mydeg <- function(sco.curr) {
     .[,padj:=p.adjust(pvalue, method="fdr")]
   deseq.dt
 }
+
+
