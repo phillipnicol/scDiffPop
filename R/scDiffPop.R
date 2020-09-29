@@ -26,6 +26,7 @@ scDiffPop <- function(Sco) {
     #Get group with most clusters
     ixs <- which(group == Mode(group))
     print(group)
+    cat("Current group: ", cell_types[ixs], "\n")
     split <- SplitGroup(Sco[,Sco$seurat_clusters %in% (ixs - 1)], ixs)
 
     if(length(unique(split)) > 1) {
@@ -148,12 +149,9 @@ scDiffPop <- function(Sco) {
 
     #term2gene <- term2gene[term2gene$term == 1,]
     # GSEA
-    print(term2gene)
-    geneList <- deg.curr$stat
+    geneList <- deg.curr$log2FoldChange
     names(geneList) <- deg.curr$gene
     geneList <- sort(geneList, decreasing = TRUE)
-    print(geneList)
-    print(intersect(names(geneList), term2gene$gene))
     if(length(intersect(names(geneList), term2gene$gene)) == 0) {
       gsea_result <- list()
       gsea_result$pvalue <- 1.0
@@ -362,15 +360,8 @@ DESeq2DETest <- function(
     colData = group.info,
     design = ~ group
   )
-  dds1 <- DESeq2::estimateSizeFactors(object = dds1)
-  dds1 <- DESeq2::estimateDispersions(object = dds1, fitType = "local")
-  dds1 <- DESeq2::nbinomWaldTest(object = dds1)
-  res <- DESeq2::results(
-    object = dds1,
-    contrast = c("group", "Group1", "Group2"),
-    alpha = 0.05,
-    ...
-  )
+  dds1 <- DESeq2::DESeq(object = dds1, fitType = "local")
+  res <- DESeq2::lfcShrink(dds = dds1, coef = 2)
   # to.return <- data.frame(p_val = res$pvalue, row.names = rownames(res))
   return(res)
 }
@@ -397,6 +388,7 @@ mydeg <- function(sco.curr) {
   print(responders)
   print(nonresponders)
   print(dim(exp.curr))
+  print(dim(exp.curr[,c(responders,nonresponders)]))
   deseq.out = DESeq2DETest(data.use=exp.curr[,c(responders,nonresponders)], cells.1=responders, cells.2=nonresponders)
   deseq.dt = deseq.out %>%
     as.data.frame %>%
