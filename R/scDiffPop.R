@@ -1,15 +1,19 @@
 
 
-
-scDiffPop <- function(Sco) {
-  if(!("cellType" %in% colnames(Sco@meta.data))) {
-    stop("Seurat object meta data must have column 'cellType'.")
+scDiffPop <- function(Sco, use.seurat.clusters = TRUE) {
+  if(!("cellType" %in% colnames(Sco@meta.data)) && !(use.seurat.clusters)) {
+    stop("Seurat object meta data must have column 'cellType.")
   }
   if(!("response" %in% colnames(Sco@meta.data))) {
     stop("Seurat object meta data must have column 'response'.")
   }
   if(length(unique(Sco@meta.data$response)) != 2) {
     stop("Response column must have exactly two unique elements.")
+  }
+
+  if(use.seurat.clusters) {
+    cell_types <- as.integer(Sco$seurat_clusters)
+    Sco@meta.data$cellTypes <- sapply(cell_types, function(x) {paste("s", x, sep ="")})
   }
 
   cell_types <- unique(Sco@meta.data$cellType)
@@ -111,6 +115,14 @@ scDiffPop <- function(Sco) {
     sco.sub = Sco[,Sco$seurat_clusters %in% oldsubtree] %>%
       Seurat::FindVariableFeatures(selection.method = "vst", nfeatures = 2000)
 
+    if(length(which(sco.sub@meta.data$binaryResponse == 0)) == 0
+       || length(which(sco.sub@meta.data$binaryResponse == 1)) == 0) {
+      gsea_result <- list()
+      gsea_result$pvalue <- 1.0
+      gsea_result$ES <- 0.0
+      GSEA_list[[i]] <- gsea_result
+      next
+    }
     ## Perform differential expression
     deg.curr = mydeg(sco.sub)
     #deg.curr = deg.curr[padj<0.1]
@@ -118,7 +130,9 @@ scDiffPop <- function(Sco) {
     ## Find markers in children
     seurat.clust.cell.1 = subtree
     Idents(sco.sub) = ifelse(sco.sub$seurat_clusters %in% seurat.clust.cell.1, 1 ,2) %>% as.factor
-    markers.curr <- Seurat::FindMarkers(sco.sub, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25, ident.1 = 1)
+    markers.curr <- Seurat::FindMarkers(sco.sub, only.pos = TRUE, ident.1 = 1)
+    print(colnames(markers.curr))
+    markers.curr <- markers.curr[markers.curr$p_val < 0.05, ]
     #markers.curr = FindAllMarkers(sco.sub, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25) ## this will give markers of both cell.1 (child1) and cell.2 (child2)
     #markers.top  = markers.curr %>% group_by(cluster) %>% top_n(n = 700, wt = avg_logFC)
     #term2gene  = markers.top %>%  as.data.table %>%
@@ -126,9 +140,16 @@ scDiffPop <- function(Sco) {
     term2gene <- matrix(0, nrow = nrow(markers.curr), ncol = 2) %>% as.data.frame
     term2gene[,1] <- 1; term2gene[,2] <- rownames(markers.curr)
     colnames(term2gene) <- c("term", "gene")
-    if(nrow(term2gene) >= 50) {
-      term2gene <- term2gene[1:50,]
+
+    if(nrow(markers.curr) == 0) {
+      gsea_result <- list()
+      gsea_result$pvalue <- 1.0
+      gsea_result$ES <- 0.0
+      GSEA_list[[i]] <- gsea_result
+      next
     }
+
+    print("THROUGH MARKERS.CURR")
 
     # Make contingency table
     a <- length(which(deg.curr[log2FoldChange > 0]$gene %in% term2gene[term2gene[,1] == 1,2]))
@@ -182,6 +203,7 @@ scDiffPop <- function(Sco) {
     print(Counts[i,2])
 
     #Do differential expression
+    print("TRYING DIFFERENTIAL EXPRESSION")
     try({
       deg.curr = mydeg(sco.sub)
       responders.topgenes[[i]] <- deg.curr[log2FoldChange > 0]$gene[1]
@@ -218,19 +240,18 @@ scDiffPop <- function(Sco) {
   #Save name for later
   name_clean <- V(G)$name
 
-  for(i in ix) {
-    s <- GSEA_list[[i]]$pvalue
+  for(i in 2:length(V(G)$name)) {
+    s <- GSEA_list[[i-1]]$pvalue
     if(s < 0.001) {
-      V(G)$name[i+1] <- paste(V(G)$name[i+1], "***", sep="")
+      V(G)$name[i] <- paste(V(G)$name[i], "***", sep="")
     }
-    else if(s < 0.001) {
-      V(G)$name[i+1] <- paste(V(G)$name[i+1], "**", sep="")
+    else if(s < 0.01) {
+      V(G)$name[i] <- paste(V(G)$name[i], "**", sep="")
     }
-    else {
-      V(G)$name[i+1] <- paste(V(G)$name[i+1], "*", sep="")
+    else if(s < 0.05) {
+      V(G)$name[i] <- paste(V(G)$name[i], "*", sep="")
     }
   }
-
 
   p <- ggraph(G, "manual", x=  V(G)$x, y=V(G)$y) + geom_edge_link() #+ geom_node_point(aes(size = 2, col = names(effect)))
   #p <- p + geom_node_text(aes(x = x*1.005, y=y*1.005, label = name, angle = 90),
