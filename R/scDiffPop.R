@@ -95,18 +95,19 @@ scDiffPop <- function(Sco, use.seurat.clusters = TRUE) {
 
   Counts <- matrix(0, nrow = nrow(Tree), ncol = 2)
 
-  out <- list()
-  out$subtree <- list()
+  data <- list()
+  data$subtree <- list()
+  data$tree <- Tree
 
   # sco.sub = GSE145281[, GSE145281$seurat_clusters %in% c(10,11)]
   responders.enrichment = nonresponders.enrichment = list()
   responders.topgenes = nonresponders.topgenes = list()
   GSEA_list <- list()
-  contingency.tables <- list()
   for (i in 1:nrow(Tree)) {
+    data[[i]] <- list()
     cat("ITERATION: ", i, "\n")
     subtree <- as.vector(DFS(Tree, i, cell_types))
-    out$subtree[[i]] <- subtree
+    data[[i]]$subtree <- subtree
     subtree <- which(cell_types %in% subtree) - 1
     print(subtree)
     old_ix <- as.integer(Tree[i,2]) - 1
@@ -120,7 +121,7 @@ scDiffPop <- function(Sco, use.seurat.clusters = TRUE) {
       gsea_result <- list()
       gsea_result$pvalue <- 1.0
       gsea_result$ES <- 0.0
-      GSEA_list[[i]] <- gsea_result
+      data[[i]]$GSEA <- gsea_result
       next
     }
     ## Perform differential expression
@@ -131,7 +132,6 @@ scDiffPop <- function(Sco, use.seurat.clusters = TRUE) {
     seurat.clust.cell.1 = subtree
     Idents(sco.sub) = ifelse(sco.sub$seurat_clusters %in% seurat.clust.cell.1, 1 ,2) %>% as.factor
     markers.curr <- Seurat::FindMarkers(sco.sub, only.pos = TRUE, ident.1 = 1)
-    print(colnames(markers.curr))
     markers.curr <- markers.curr[markers.curr$p_val < 0.05, ]
     #markers.curr = FindAllMarkers(sco.sub, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25) ## this will give markers of both cell.1 (child1) and cell.2 (child2)
     #markers.top  = markers.curr %>% group_by(cluster) %>% top_n(n = 700, wt = avg_logFC)
@@ -145,7 +145,7 @@ scDiffPop <- function(Sco, use.seurat.clusters = TRUE) {
       gsea_result <- list()
       gsea_result$pvalue <- 1.0
       gsea_result$ES <- 0.0
-      GSEA_list[[i]] <- gsea_result
+      data[[i]]$GSEA <- gsea_result
       next
     }
 
@@ -161,12 +161,6 @@ scDiffPop <- function(Sco, use.seurat.clusters = TRUE) {
     C <- matrix(c(a,b,c,d), nrow = 2, ncol = 2, byrow = TRUE)
     responders.enrichment[[i]] <- fisher.test(C, alternative = "greater")$p.value
     nonresponders.enrichment[[i]] <- fisher.test(C, alternative = "less")$p.value
-    print(C)
-    contingency.tables[[i]] <- C
-
-
-    print(responders.enrichment[[i]])
-    print(nonresponders.enrichment[[i]])
 
     #term2gene <- term2gene[term2gene$term == 1,]
     # GSEA
@@ -177,7 +171,7 @@ scDiffPop <- function(Sco, use.seurat.clusters = TRUE) {
       gsea_result <- list()
       gsea_result$pvalue <- 1.0
       gsea_result$ES <- 0.0
-      GSEA_list[[i]] <- gsea_result
+      data[[i]]$GSEA <- gsea_result
     }
     else {
     GSEA_list[[i]] <- clusterProfiler::GSEA(geneList, TERM2GENE = term2gene, pvalueCutoff = 1)
@@ -192,7 +186,7 @@ scDiffPop <- function(Sco, use.seurat.clusters = TRUE) {
       gsea_result$pvalue <- GSEA_list[[i]]@result$pvalue
     }
     print(gsea_result)
-    GSEA_list[[i]] <- gsea_result }
+    data[[i]]$GSEA <- gsea_result}
 
     sco.sub = Sco[,Sco$seurat_clusters %in% subtree] %>%
       FindVariableFeatures(selection.method = "vst", nfeatures = 2000)
@@ -209,13 +203,6 @@ scDiffPop <- function(Sco, use.seurat.clusters = TRUE) {
       responders.topgenes[[i]] <- deg.curr[log2FoldChange > 0]$gene[1]
       nonresponders.topgenes[[i]] <- deg.curr[log2FoldChange < 0]$gene[1]})
   }
-
-  out$responders.enrichment <- responders.enrichment
-  out$nonresponders.enrichment <- nonresponders.enrichment
-  out$responders.topgenes <- responders.topgenes
-  out$nonresponders.topgenes <- nonresponders.topgenes
-  out$contingency.tables <- contingency.tables
-  out$GSEA <- GSEA_list
 
   p0 <- length(unique(Sco@meta.data$patient[Sco@meta.data$binaryResponse == 0]))
   p1 <- length(unique(Sco@meta.data$patient[Sco@meta.data$binaryResponse == 1]))
@@ -241,7 +228,7 @@ scDiffPop <- function(Sco, use.seurat.clusters = TRUE) {
   name_clean <- V(G)$name
 
   for(i in 2:length(V(G)$name)) {
-    s <- GSEA_list[[i-1]]$pvalue
+    s <- data[[i-1]]$GSEA$pvalue
     if(s < 0.001) {
       V(G)$name[i] <- paste(V(G)$name[i], "***", sep="")
     }
@@ -252,6 +239,8 @@ scDiffPop <- function(Sco, use.seurat.clusters = TRUE) {
       V(G)$name[i] <- paste(V(G)$name[i], "*", sep="")
     }
   }
+
+  visualizations <- list()
 
   p <- ggraph(G, "manual", x=  V(G)$x, y=V(G)$y) + geom_edge_link() #+ geom_node_point(aes(size = 2, col = names(effect)))
   #p <- p + geom_node_text(aes(x = x*1.005, y=y*1.005, label = name, angle = 90),
@@ -267,8 +256,8 @@ scDiffPop <- function(Sco, use.seurat.clusters = TRUE) {
   p <- p + geom_node_label(aes(label = name, angle = 90), repel = FALSE, nudge_y = 0.25, col = "midnightblue")
   p <- p + theme_graph()
 
-  out$counts <- Counts
-  out$piechart <- p
+  #out$counts <- Counts
+  visualizations$pies <- p
 
 
   xy <- layout_as_tree(G)
@@ -288,11 +277,11 @@ scDiffPop <- function(Sco, use.seurat.clusters = TRUE) {
   #p <- p + geom_node_label(aes(label = name, angle = 90), repel = FALSE, nudge_y = 0.25, col = "midnightblue")
   p <- p + theme_graph()
 
-  out$genegraph <- p
+  visualizations$genes <- p
 
   #Now do GSEA graph
   V(G)$name <- name_clean
-  V(G)$ES <- sapply(GSEA_list, function(x) {round(x$ES,2)})
+  V(G)$ES <- sapply(data, function(x) {round(x$GSEA$ES,2)})
   V(G)$ES <- c("", V(G)$ES)
   p <- ggraph(G, "manual", x=  V(G)$x, y=V(G)$y) + geom_edge_link() #+ geom_node_point(aes(size = 2, col = names(effect)))
   #p <- p + geom_node_text(aes(x = x*1.005, y=y*1.005, label = name, angle = 90),
@@ -303,7 +292,15 @@ scDiffPop <- function(Sco, use.seurat.clusters = TRUE) {
   #p <- p + geom_node_label(aes(label = name, angle = 90), repel = FALSE, nudge_y = 0.25, col = "midnightblue")
   p <- p + theme_graph()
 
-  out$GSEAgraph <- p
+  visualizations$GSEA <- p
+
+  out <- list()
+  out$visualizations <- visualizations
+  #data <- list()
+  #data$GSEA <- GSEA_list; data$topgenes <- NULL
+  #data$subtree <- subtree
+  #data$phenotype <- data.frame(label = c(0,1), phenotype = c(unique_phenotype[1], unique_phenotype[2]))
+  out$data <- data
 
   return(out)
 }
