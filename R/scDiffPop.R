@@ -133,6 +133,8 @@ scDiffPop <- function(Sco, use.seurat.clusters = TRUE) {
     Idents(sco.sub) = ifelse(sco.sub$seurat_clusters %in% seurat.clust.cell.1, 1 ,2) %>% as.factor
     markers.curr <- Seurat::FindMarkers(sco.sub, only.pos = TRUE, ident.1 = 1)
     markers.curr <- markers.curr[markers.curr$p_val < 0.05, ]
+    rowcutoff <- max(nrow(markers.curr), 50)
+    markers.curr <- markers.curr[1:rowcutoff,]
     #markers.curr = FindAllMarkers(sco.sub, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25) ## this will give markers of both cell.1 (child1) and cell.2 (child2)
     #markers.top  = markers.curr %>% group_by(cluster) %>% top_n(n = 700, wt = avg_logFC)
     #term2gene  = markers.top %>%  as.data.table %>%
