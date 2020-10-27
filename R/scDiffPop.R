@@ -235,7 +235,7 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
     print(summary(fit))
     results$effect[i] <- fit$coefficients[1]
     results$lmpval[i] <- summary(fit)$coefficients[1,4]
-    plot(x=x,y=y, xlab = "Marker l2FC", ylab=  "Phenotype l2FC", main = paste(out$data[[i]]$subtree))
+    plot(x=x,y=y, xlab = "Marker l2FC", ylab=  "Phenotype l2FC", main = paste(data[[i]]$subtree))
     abline(lm(y~x+0), col = "red")})
 
 
@@ -315,7 +315,7 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
   p <- ggraph(G, "manual", x=  V(G)$x, y=V(G)$y)+ geom_edge_link()
   p <- p + geom_node_circle(aes(x0=x,y0=y,r=radius), colour = NA, show.legend = FALSE, data = piechart_data, fill="white")
   p <- p + geom_scatterpie(
-    aes(x=x, y=y, r=radius, alpha=name),
+    aes(x=x, y=y, r=radius, alpha = forcats::fct_inorder(name)),
     data = piechart_data,
     cols = c("pht1", "pht2"),
     colour = NA,
@@ -341,7 +341,7 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
   V(G)$name <- name_clean
   p <- ggraph(G, "manual", x=  V(G)$x, y=V(G)$y) + geom_edge_link()
   p <- p + geom_node_circle(aes(x0=x,y0=y,r=radius), colour = "black", show.legend = FALSE, data = piechart_data, fill="white")
-  p <- p + geom_node_circle(aes(x0=x,y0=y,r=radius, fill = name, alpha = name), colour = NA, show.legend = FALSE, data = piechart_data) + scale_fill_manual(values = piechart_data$effect_col)
+  p <- p + geom_node_circle(aes(x0=x,y0=y,r=radius, fill = forcats::fct_inorder(name), alpha = forcats::fct_inorder(name)), colour = NA, show.legend = FALSE, data = piechart_data) + scale_fill_manual(values = piechart_data$effect_col)
   p <- p + scale_alpha_manual(values = piechart_data$intensity)
   p <- p + geom_node_label(aes(label = name, angle = 90), repel = FALSE, nudge_y = 0.25, col = "midnightblue")
   p <- p + theme_graph()
