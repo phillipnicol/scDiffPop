@@ -123,7 +123,7 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
       gsea_result$pvalue <- 1.0
       gsea_result$ES <- 0.0
       data[[i]]$GSEA <- gsea_result
-      sco.sub = Sco[,Sco$seurat_clusters %in% subtree]
+      sco.sub <- Sco[,Sco$seurat_clusters %in% subtree]
       ncells <- nrow(sco.sub@meta.data)
       Counts[i,1] <- nrow(sco.sub@meta.data[sco.sub@meta.data$binaryResponse == 0,])
       Counts[i,2] <- nrow(sco.sub@meta.data[sco.sub@meta.data$binaryResponse == 1,])
@@ -147,7 +147,7 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
     Idents(sco.sub) = ifelse(sco.sub$seurat_clusters %in% seurat.clust.cell.1, 1 ,2) %>% as.factor
     markers.curr <- Seurat::FindMarkers(sco.sub, min.pct = 0.1, only.pos = TRUE, logfc.threshold = 0.25, ident.1 = 1)
     #markers.curr <- markers.curr[markers.curr$p_val < 0.05, ]
-    markers.curr <- markers.curr[1:min(25, nrow(markers.curr)),]
+    markers.curr <- markers.curr[1:min(20, nrow(markers.curr)),]
     #markers.curr = FindAllMarkers(sco.sub, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25) ## this will give markers of both cell.1 (child1) and cell.2 (child2)
     #markers.top  = markers.curr %>% group_by(cluster) %>% top_n(n = 700, wt = avg_logFC)
     #term2gene  = markers.top %>%  as.data.table %>%
@@ -227,20 +227,25 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
     print(x)
     print(y)
 
+    x[is.infinite(x)] <- 1000
+
+    x <- order(x)
 
     results$effect[i] <- 0
     results$lmpval[i] <- 1
     try({
     fit <- lm(y~x+0)
     print(summary(fit))
-    results$effect[i] <- fit$coefficients[1]
-    results$lmpval[i] <- summary(fit)$coefficients[1,4]
-    plot(x=x,y=y, xlab = "Marker l2FC", ylab=  "Phenotype l2FC", main = paste(data[[i]]$subtree))
+    fitsum <- summary(fit)
+    results$effect[i] <- (1 - sum(fit$residuals^2)/sum(y^2))*sign(fit$coefficients[1])
+    print("EFFECT:")
+    print(results$effect[i])
+    results$lmpval[i] <- fitsum$coefficients[4]
+    plot(x=x,y=y, xlab = "Marker l2FC", ylab=  "Phenotype l2FC")
     abline(lm(y~x+0), col = "red")})
 
-
-    sco.sub = Sco[,Sco$seurat_clusters %in% subtree] %>%
-      FindVariableFeatures(selection.method = "vst", nfeatures = 2000)
+    sco.sub <- Sco[,Sco$seurat_clusters %in% subtree]
+    sco.sub <- Seurat::FindVariableFeatures(sco.sub, selection.method = "vst", nfeatures = 2000)
     ncells <- nrow(sco.sub@meta.data)
     Counts[i,1] <- nrow(sco.sub@meta.data[sco.sub@meta.data$binaryResponse == 0,])
     Counts[i,2] <- nrow(sco.sub@meta.data[sco.sub@meta.data$binaryResponse == 1,])
@@ -403,6 +408,8 @@ Mode <- function(x) {
 }
 
 SplitGroup <- function(Sco_sub, ixs) {
+  Sco_sub <- Seurat::NormalizeData(Sco_sub)
+
   #Find variable features
   Sco_sub <- Seurat::FindVariableFeatures(Sco_sub, verbose = FALSE)
 
@@ -420,6 +427,7 @@ SplitGroup <- function(Sco_sub, ixs) {
   out <- sapply(ixs-1, function(x) {
     Mode(km[which(Sco_sub$seurat_clusters == x)])
   })
+  print(out)
 
   return(out)
 }
