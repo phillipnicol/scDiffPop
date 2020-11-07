@@ -1,6 +1,6 @@
 
 
-scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, find.pathways = FALSE) {
+scDiffPopTEST <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, find.pathways = FALSE) {
   if(!("cellType" %in% colnames(Sco@meta.data)) && !(use.seurat.clusters)) {
     stop("Seurat object meta data must have column 'cellType.")
   }
@@ -18,66 +18,27 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
 
   cell_types <- unique(Sco@meta.data$cellType)
   Sco@meta.data$seurat_clusters <- sapply(Sco@meta.data$cellType, function(x) {
-    return(which(cell_types == x) - 1)
+    return(which(cell_types == x))
   })
 
-  group <- rep(1, length(cell_types))
+  Idents(Sco) <- Sco@meta.data$cellType
 
-  TreeMat <- matrix(1, nrow = length(cell_types), ncol = 1)
-  counter <- 1
-
-  while(length(unique(group)) != length(cell_types)) {
-    #Get group with most clusters
-    ixs <- which(group == Mode(group))
-    print(group)
-    cat("Current group: ", cell_types[ixs], "\n")
-    split <- SplitGroup(Sco[,Sco$seurat_clusters %in% (ixs - 1)], ixs)
-
-    if(length(unique(split)) > 1) {
-      counter <- counter + 1
-      subgroup <- group[ixs]
-      subgroup[split == 2] <- counter
-      counter <- counter + 1
-      subgroup[split == 1] <- counter
-      group[ixs] <- subgroup
-
-      TreeMat <- cbind(TreeMat, group)
-    }
-    else {
-      for(j in ixs) {
-        counter <- counter + 1
-        group[j] <- counter
-
-        TreeMat <- cbind(TreeMat, group)
-      }
-    }
-  }
-
-  Tree <- matrix(nrow = 0, ncol = 2)
-
-  counter <- 1
-
-  for(i in 2:ncol(TreeMat)) {
-    newvals <- unique(TreeMat[TreeMat[,i] > counter,i])
-    for(j in newvals) {
-      counter <- counter + 1
-      ixs <- which(TreeMat[,i] == counter)
-      newvec <- c(counter, TreeMat[ixs[1], i-1])
-      Tree <- rbind(Tree, newvec)
-    }
-  }
-
-  #Change names of leaves
-  cntr <- 1
-  for(ct in TreeMat[,ncol(TreeMat)]) {
-    ix <- which(Tree[,1] == ct)
-    Tree[ix,1] <- cell_types[cntr]
-    cntr <- cntr+1
-  }
+  Sco <- BuildClusterTree(object = Sco, dims = 1:50)
+  TreeObj <- Tool(object = Sco, slot = 'BuildClusterTree')
+  plot(TreeObj)
+  Tree <- TreeObj$edge[,c(2,1)]
+  print(Tree)
 
   # Also give the columns a name
   colnames(Tree) <- c("Child", "Parent")
   rownames(Tree) <- c(1:nrow(Tree))
+
+  print(TreeObj$tip.label)
+
+  Tree[Tree[,1] <= length(TreeObj$tip.label),1] <- TreeObj$tip.label[Tree[Tree[,1] <= length(TreeObj$tip.label),1]]
+  root <- unique(Tree[Tree[,2] %!in% Tree[,1], 2])
+  Tree[Tree[,2] == root,2] <- "Root"
+
 
   print(Tree)
 
@@ -108,11 +69,17 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
     data[[i]] <- list()
     cat("ITERATION: ", i, "\n")
     subtree <- as.vector(DFS(Tree, i, cell_types))
-    data[[i]]$subtree <- subtree
-    subtree <- which(cell_types %in% subtree) - 1
     print(subtree)
-    old_ix <- as.integer(Tree[i,2]) - 1
-    oldsubtree  <- which(cell_types %in% as.vector(DFS(Tree,old_ix,cell_types))) - 1
+    data[[i]]$subtree <- subtree
+    subtree <- which(cell_types %in% subtree)
+    print(subtree)
+    old_ix <- which(Tree[,1] == Tree[i,2])
+    if(length(old_ix) == 0) {
+      oldsubtree <- c(1:length(cell_types))
+    }
+    else {
+      oldsubtree  <- which(cell_types %in% as.vector(DFS(Tree,old_ix,cell_types)))
+    }
     print(oldsubtree)
     sco.sub = Sco[,Sco$seurat_clusters %in% oldsubtree] %>%
       Seurat::FindVariableFeatures(selection.method = "vst", nfeatures = 2000)
@@ -146,12 +113,13 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
     seurat.clust.cell.1 = subtree
     Idents(sco.sub) = ifelse(sco.sub$seurat_clusters %in% seurat.clust.cell.1, 1 ,2) %>% as.factor
     markers.curr <- Seurat::FindMarkers(sco.sub, min.pct = 0.1, only.pos = TRUE, logfc.threshold = 0.25, ident.1 = 1)
+    negmarkers.curr <- Seurat::FindMarkers(sco.sub, min.pct = 0.1, logfc.threshold = 0.25, ident.1 = 1)
     #markers.curr <- markers.curr[markers.curr$p_val < 0.05, ]
     markers.curr <- markers.curr[1:min(50, nrow(markers.curr)),]
     #markers.curr = FindAllMarkers(sco.sub, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25) ## this will give markers of both cell.1 (child1) and cell.2 (child2)
     #markers.top  = markers.curr %>% group_by(cluster) %>% top_n(n = 700, wt = avg_logFC)
     #term2gene  = markers.top %>%  as.data.table %>%
-      #.[,.(term=cluster,gene=gene)] %>% as.data.frame
+    #.[,.(term=cluster,gene=gene)] %>% as.data.frame
     print(nrow(markers.curr))
     term2gene <- matrix(0, nrow = nrow(markers.curr), ncol = 2) %>% as.data.frame
     term2gene[,1] <- 1; term2gene[,2] <- rownames(markers.curr)
@@ -234,15 +202,16 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
     results$effect[i] <- 0
     results$lmpval[i] <- 1
     try({
-    fit <- lm(y~x+0)
-    print(summary(fit))
-    fitsum <- summary(fit)
-    results$effect[i] <- summary(fit)$r.squared*fit$coefficients[1]
-    print("EFFECT:")
-    print(results$effect[i])
-    results$lmpval[i] <- fitsum$coefficients[4]
-    plot(x=x,y=y, xlab = "Marker l2FC", ylab=  "Phenotype l2FC")
-    abline(lm(y~x+0), col = "red")})
+      fit <- rfit(y~x+0)
+      print(summary(fit))
+      fitsum <- summary(fit)
+      results$effect[i] <- summary(fit)$R2 * sign(fit$coefficients[1])
+      print("EFFECT:")
+      print(results$effect[i])
+      results$lmpval[i] <- fitsum$coefficients[4]
+      plot(x=x,y=y, xlab = "Marker l2FC", ylab=  "Phenotype l2FC")
+      abline(fit, col = "blue")
+      abline(lm(y~x+0), col = "red", lty = 2)})
 
     sco.sub <- Sco[,Sco$seurat_clusters %in% subtree]
     sco.sub <- Seurat::FindVariableFeatures(sco.sub, selection.method = "vst", nfeatures = 2000)
@@ -326,7 +295,7 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
     colour = NA,
     legend_name = "Phenotype",
   ) + scale_alpha_manual(values = piechart_data$transparency, name = NULL, labels = NULL)
-  p <- p + scale_fill_manual(values = c("turquoise", "hotpink1"), labels = c(unique_phenotype[1], unique_phenotype[2]))
+  p <- p + scale_fill_manual(values = c("seagreen", "darkmagenta"), labels = c(unique_phenotype[1], unique_phenotype[2]))
   p <- p + geom_node_label(aes(label = name, angle = 90), repel = FALSE, nudge_y = 0.25, col = "midnightblue")
   p <- p + theme_graph()
 
@@ -407,44 +376,13 @@ Mode <- function(x) {
   return(xu[which.max(tabulate(match(x, xu)))])
 }
 
-SplitGroup <- function(Sco_sub, ixs) {
-  if(length(ixs) == 2) {
-    return(c(1,2))
-  }
-
-  Sco_sub <- Seurat::NormalizeData(Sco_sub)
-
-  #Find variable features
-  Sco_sub <- Seurat::FindVariableFeatures(Sco_sub, verbose = FALSE)
-
-  #Scale data
-  Sco_sub <- Seurat::ScaleData(Sco_sub)
-
-  #Run PCA on the variable features. Get 50 dimensional embeddings
-  Sco_sub <- Seurat::RunPCA(Sco_sub, verbose = FALSE)
-  embeddings <- Seurat::Embeddings(object = Sco_sub, reduction = 'pca')[,1:50]
-
-  pseudobulk <- matrix(0, nrow = 0, ncol = 50)
-  for(i in ixs-1) {
-    rxs <- which(Sco_sub@meta.data$seurat_clusters == i)
-    pseudobulk <- rbind(pseudobulk, colMeans(embeddings[rxs,]))
-  }
-  print(pseudobulk)
-
-  #Cluster via k means
-  km <- kmeans(pseudobulk, centers = 2, iter.max = 10)$cluster
-
-  return(km)
-}
-
 DFS <- function(Tree, node, cell_types) {
-  if(node == 0) {
+  if(node == "Root") {
     return(cell_types)
   }
+  row <- Tree[node,]
 
   leaves <- c()
-
-  row <- Tree[node,]
 
   newparent <- row[1]
 
@@ -517,5 +455,6 @@ mydeg <- function(sco.curr) {
     .[,padj:=p.adjust(pvalue, method="fdr")]
   deseq.dt
 }
+
 
 
