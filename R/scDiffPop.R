@@ -111,7 +111,7 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
     data[[i]]$subtree <- subtree
     subtree <- which(cell_types %in% subtree) - 1
     print(subtree)
-    old_ix <- as.integer(Tree[i,2]) - 1
+    old_ix <- as.integer(Tree[i,2])
     oldsubtree  <- which(cell_types %in% as.vector(DFS(Tree,old_ix,cell_types))) - 1
     print(oldsubtree)
     sco.sub = Sco[,Sco$seurat_clusters %in% oldsubtree] %>%
