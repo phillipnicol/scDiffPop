@@ -148,7 +148,7 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
     Idents(sco.sub) = ifelse(sco.sub$seurat_clusters %in% seurat.clust.cell.1, 1 ,2) %>% as.factor
     markers.curr <- Seurat::FindMarkers(sco.sub, min.pct = 0.1, only.pos = TRUE, logfc.threshold = 0.25, ident.1 = 1)
     #markers.curr <- markers.curr[markers.curr$p_val < 0.05, ]
-    markers.curr <- markers.curr[1:min(50, nrow(markers.curr)),]
+    markers.curr <- markers.curr[1:min(25, nrow(markers.curr)),]
     #markers.curr = FindAllMarkers(sco.sub, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25) ## this will give markers of both cell.1 (child1) and cell.2 (child2)
     #markers.top  = markers.curr %>% group_by(cluster) %>% top_n(n = 700, wt = avg_logFC)
     #term2gene  = markers.top %>%  as.data.table %>%
@@ -239,7 +239,8 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
     results$robust_p[i] <- min(length(which(results$robust_stat[i] > null_dist)), length(which(results$robust_stat[i] < null_dist)))/125
 
 
-    plot(hist(null_dist))
+    hist(null_dist)
+    abline(v = results$robust_stat[i])
 
     results$effect[i] <- 0
     results$lmpval[i] <- 1
@@ -363,6 +364,32 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
 
   visualizations$effect <- p
 
+  piechart_data$RS <- c(0, sign(results$robust_stat))
+  ifelse(piechart_data$RS > 0, "turquoise", "hotpink1")
+  piechart_data$RS[1] <- "white"
+  piechart_data$RS_intensity <- rep(0.4, nrow(piechart_data))
+  for(i in 2:length(name_clean)) {
+    s <- results$robust_p[i-1]
+    if(s < 0.01) {
+      piechart_data$RS_intensity[i] <- 1
+    }
+    else if(s < 0.01) {
+      piechart_data$RS_intensity[i] <- 0.8
+    }
+    else if(s < 0.05) {
+      piechart_data$RS_intensity[i] <- 0.6
+    }
+  }
+
+  V(G)$name <- name_clean
+  p <- ggraph(G, "manual", x=  V(G)$x, y=V(G)$y) + geom_edge_link()
+  p <- p + geom_node_circle(aes(x0=x,y0=y,r=radius), colour = "black", show.legend = FALSE, data = piechart_data, fill="white")
+  p <- p + geom_node_circle(aes(x0=x,y0=y,r=radius, fill = forcats::fct_inorder(name), alpha = forcats::fct_inorder(name)), colour = NA, show.legend = FALSE, data = piechart_data) + scale_fill_manual(values = piechart_data$RS)
+  p <- p + scale_alpha_manual(values = piechart_data$RS_intensity)
+  p <- p + geom_node_label(aes(label = name, angle = 90), repel = FALSE, nudge_y = 0.25, col = "midnightblue")
+  p <- p + theme_graph()
+
+  visualizations$robust_stat <- p
 
   xy <- layout_as_tree(G)
   V(G)$x <- xy[, 1]
@@ -565,8 +592,6 @@ permutation_test <- function(Sco, iterations, markers) {
     intsct1 <- which(names(geneList) %in% markers)
     intsct2 <- which(markers %in% names(geneList))
     y[intsct2] <- geneList[intsct1]
-
-    print(y)
 
     null_dist[i] <- mean(y)
     print("MEAN:")
