@@ -238,6 +238,9 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
     null_dist <- permutation_test(sco.sub, 250, rownames(markers.curr))
     results$robust_p[i] <- min(length(which(results$robust_stat[i] > null_dist)), length(which(results$robust_stat[i] < null_dist)))/125
 
+
+    plot(hist(null_dist))
+
     results$effect[i] <- 0
     results$lmpval[i] <- 1
     try({
