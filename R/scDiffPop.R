@@ -218,7 +218,7 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
         data[[i]]$GSEA <- gsea_result}
     }
 
-    geneList <- deg.curr$log2FoldChange - mean(deg.curr$log2FoldChange)
+    geneList <- deg.curr$log2FoldChange
     names(geneList) <- deg.curr$gene
     x <- markers.curr$avg_logFC
     names(x) <- rownames(markers.curr)
@@ -235,7 +235,7 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
     x <- order(x)
 
     results$robust_stat[i] <- mean(y)
-    null_dist <- permutation_test(sco.sub, 250, x)
+    null_dist <- permutation_test(sco.sub, 250, rownames(markers.curr))
     results$robust_p[i] <- min(length(which(results$robust_stat[i] > null_dist)), length(which(results$robust_stat[i] < null_dist)))/125
 
     results$effect[i] <- 0
@@ -532,8 +532,10 @@ permutation_test <- function(Sco, iterations, markers) {
   patients <- unique(Sco@meta.data$patient)
   patients_response <- sapply(patients, function(x) {
     row <- which(Sco@meta.data$patient == x)[1]
-    return(Sco@meta.data$response[row])
+    return(Sco@meta.data$binaryResponse[row])
   })
+
+  print(markers)
 
   print(patients_response)
 
@@ -543,22 +545,29 @@ permutation_test <- function(Sco, iterations, markers) {
     Sco.curr <- Sco
     patients.perm <- sample(1:length(patients), size = length(patients), replace = FALSE)
     for(j in 1:length(patients)) {
-      Sco.curr@meta.data[Sco.curr@meta.data$patient == patients[j],]$response <- patients_response[patients.perm[j] ]
+      Sco.curr@meta.data[Sco.curr@meta.data$patient == patients[j],]$binaryResponse <- patients_response[patients.perm[j] ]
     }
 
     print(unique(Sco.curr@meta.data$patient))
-    print(unique(Sco.curr@meta.data$response))
+    print(sapply(unique(Sco.curr@meta.data$patient), function(x) {
+      row <- which(Sco.curr@meta.data$patient == x)[1]
+      return(Sco.curr@meta.data$binaryResponse[row])
+    }))
 
     deg.curr <- mydeg(Sco.curr)
 
-    geneList <- deg.curr$log2FoldChange - mean(deg.curr$log2FoldChange)
+    geneList <- deg.curr$log2FoldChange
     names(geneList) <- deg.curr$gene
-    y <- rep(0, length(markers)); names(y) <- names(markers)
-    intsct1 <- which(names(geneList) %in% names(markers))
-    intsct2 <- which(names(markers) %in% names(geneList))
+    y <- rep(0, length(markers)); names(y) <- markers
+    intsct1 <- which(names(geneList) %in% markers)
+    intsct2 <- which(markers %in% names(geneList))
     y[intsct2] <- geneList[intsct1]
 
+    print(y)
+
     null_dist[i] <- mean(y)
+    print("MEAN:")
+    print(mean(y))
   }
 
   return(null_dist)
