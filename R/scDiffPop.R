@@ -240,7 +240,7 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
 
 
     hist(null_dist)
-    abline(v = results$robust_stat[i])
+    abline(v = results$robust_stat[i], col = "red")
 
     results$effect[i] <- 0
     results$lmpval[i] <- 1
