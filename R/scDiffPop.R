@@ -99,8 +99,9 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
   data$subtree <- list()
   data$tree <- Tree
 
-  results <- data.frame(group = rep(0,nrow(Tree)), enrichment=rep(0,nrow(Tree)),p_adj = rep(0,nrow(Tree)), pvalue = rep(0,nrow(Tree)),
-                        effect = rep(0,nrow(Tree)), lmpval = rep(0,nrow(Tree)))
+  results <- data.frame(group = rep(0,nrow(Tree)), enrichment=rep(0,nrow(Tree)), ES = rep(0, nrow(Tree)), p_adj = rep(0,nrow(Tree)), pvalue = rep(0,nrow(Tree)),
+                        effect = rep(0,nrow(Tree)), lmpval = rep(0,nrow(Tree)), robust_stat = rep(0, nrow(Tree)),
+                        robust_p = rep(0, nrow(Tree)))
   GSEA_list <- list()
   responders.topgenes <- list()
   nonresponders.topgenes <- list()
@@ -205,10 +206,12 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
           if(gsea_result$ES > 0) {
             results$enrichment[i] <- unique_phenotype[1]
             results$pvalue[i] <- gsea_result$pvalue
+            results$ES[i] <- gsea_result$ES
           }
           else {
             results$enrichment[i] <- unique_phenotype[2]
             results$pvalue[i] <- gsea_result$pvalue
+            results$ES[i] <- gsea_result$ES
           }
         }
         print(gsea_result)
@@ -230,6 +233,10 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
     x[is.infinite(x)] <- 1000
 
     x <- order(x)
+
+    results$robust_stat[i] <- mean(y)
+    null_dist <- permutation_test(sco.sub, 250, x)
+    results$robust_p[i] <- min(length(which(results$robust_stat[i] > null_dist)), length(which(results$robust_stat[i] < null_dist)))/125
 
     results$effect[i] <- 0
     results$lmpval[i] <- 1
@@ -516,6 +523,45 @@ mydeg <- function(sco.curr) {
     .[order(pvalue)] %>%
     .[,padj:=p.adjust(pvalue, method="fdr")]
   deseq.dt
+}
+
+
+permutation_test <- function(Sco, iterations, markers) {
+  null_dist <- rep(0, iterations)
+
+  patients <- unique(Sco@meta.data$patient)
+  patients_response <- sapply(patients, function(x) {
+    row <- which(Sco@meta.data$patient == x)[1]
+    return(Sco@meta.data$response[row])
+  })
+
+  print(patients_response)
+
+  for(i in 1:iterations) {
+    print("Rep: ")
+    print(i)
+    Sco.curr <- Sco
+    patients.perm <- sample(1:length(patients), size = length(patients), replace = FALSE)
+    for(j in 1:length(patients)) {
+      Sco.curr@meta.data[Sco.curr@meta.data$patient == patients[j],]$response <- patients_response[patients.perm[j] ]
+    }
+
+    print(unique(Sco.curr@meta.data$patient))
+    print(unique(Sco.curr@meta.data$response))
+
+    deg.curr <- mydeg(Sco.curr)
+
+    geneList <- deg.curr$log2FoldChange - mean(deg.curr$log2FoldChange)
+    names(geneList) <- deg.curr$gene
+    y <- rep(0, length(markers)); names(y) <- names(markers)
+    intsct1 <- which(names(geneList) %in% names(markers))
+    intsct2 <- which(names(markers) %in% names(geneList))
+    y[intsct2] <- geneList[intsct1]
+
+    null_dist[i] <- mean(y)
+  }
+
+  return(null_dist)
 }
 
 
