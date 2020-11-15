@@ -365,7 +365,7 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
   visualizations$effect <- p
 
   piechart_data$RS <- c(0, sign(results$robust_stat))
-  ifelse(piechart_data$RS > 0, "turquoise", "hotpink1")
+  piechart_data$RS <- ifelse(piechart_data$RS > 0, "turquoise", "hotpink1")
   piechart_data$RS[1] <- "white"
   piechart_data$RS_intensity <- rep(0.4, nrow(piechart_data))
   for(i in 2:length(name_clean)) {
