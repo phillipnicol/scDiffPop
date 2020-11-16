@@ -115,7 +115,7 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
     old_ix <- as.integer(Tree[i,2]) - 1
     oldsubtree  <- which(cell_types %in% as.vector(DFS(Tree,old_ix,cell_types))) - 1
     print(oldsubtree)
-    sco.sub = Sco[,Sco$seurat_clusters %in% oldsubtree] %>%
+    sco.sub <- Sco[,Sco$seurat_clusters %in% oldsubtree] %>%
       Seurat::FindVariableFeatures(selection.method = "vst", nfeatures = 2000)
 
     if(length(which(sco.sub@meta.data$binaryResponse == 0)) == 0
@@ -233,6 +233,15 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
     x[is.infinite(x)] <- 1000
 
     x <- order(x)
+
+    print(dim(sco.sub@assays$RNA@counts))
+
+    genes.use <- which(rownames(sco.sub@assays$RNA@counts) %in% rownames(markers.curr))
+    sco.sub@assays$RNA@counts <- sco.sub@assays$RNA@counts[genes.use,]
+    sco.sub@assays$RNA@data <- sco.sub@assays$RNA@data[genes.use,]
+    sco.sub <- FindVariableFeatures(sco.sub)
+
+    print(dim(sco.sub@assays$RNA@counts))
 
     results$robust_stat[i] <- mean(y)
     null_dist <- permutation_test(sco.sub, 250, rownames(markers.curr))
