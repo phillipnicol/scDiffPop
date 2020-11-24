@@ -593,6 +593,8 @@ permutation_test <- function(Sco, iterations, markers) {
       return(Sco.curr@meta.data$binaryResponse[row])
     }))
 
+    null_dist[i] <- 0
+    try({
     deg.curr <- mydeg(Sco.curr)
 
     geneList <- deg.curr$log2FoldChange
@@ -605,6 +607,7 @@ permutation_test <- function(Sco, iterations, markers) {
     null_dist[i] <- mean(y)
     print("MEAN:")
     print(mean(y))
+    })
   }
 
   return(null_dist)
