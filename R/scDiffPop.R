@@ -578,6 +578,8 @@ permutation_test <- function(Sco, iterations, markers) {
 
   print(patients_response)
 
+  Sco <- Sco[,sample(1:ncol(Sco), size = 100, replace = FALSE)]
+
   for(i in 1:iterations) {
     print("Rep: ")
     print(i)
