@@ -245,8 +245,10 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
 
     results$robust_stat[i] <- mean(y)
     null_dist <- permutation_test(sco.sub, 250, rownames(markers.curr))
-    results$robust_p[i] <- min(length(which(results$robust_stat[i] > null_dist)), length(which(results$robust_stat[i] < null_dist)))/125
-
+    print(null_dist)
+    pos_pval <- 1 - length(which(results$robust_stat[i] > null_dist))/250
+    neg_pval <- 1 - length(which(results$robust_stat[i] < null_dist))/250
+    results$robust_p[i] <- 2*min(pos_pval, neg_pval)
 
     hist(null_dist)
     abline(v = results$robust_stat[i], col = "red")
@@ -280,6 +282,7 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
   }
 
   results$p_adj <- p.adjust(results$pvalue, method = "fdr")
+  results$robust_p <- p.adjust(results$pvalue, method = "fdr")
 
   p0 <- length(unique(Sco@meta.data$patient[Sco@meta.data$binaryResponse == 0]))
   p1 <- length(unique(Sco@meta.data$patient[Sco@meta.data$binaryResponse == 1]))
