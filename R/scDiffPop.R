@@ -282,7 +282,7 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
   }
 
   results$p_adj <- p.adjust(results$pvalue, method = "fdr")
-  results$robust_p <- p.adjust(results$pvalue, method = "fdr")
+  results$robust_p <- p.adjust(results$robust_p, method = "fdr")
 
   p0 <- length(unique(Sco@meta.data$patient[Sco@meta.data$binaryResponse == 0]))
   p1 <- length(unique(Sco@meta.data$patient[Sco@meta.data$binaryResponse == 1]))
@@ -379,17 +379,17 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
   piechart_data$RS <- c(0, sign(results$robust_stat))
   piechart_data$RS <- ifelse(piechart_data$RS > 0, "turquoise", "hotpink1")
   piechart_data$RS[1] <- "white"
-  piechart_data$RS_intensity <- rep(0.4, nrow(piechart_data))
+  piechart_data$RS_intensity <- rep(0.3, nrow(piechart_data))
   for(i in 2:length(name_clean)) {
     s <- results$robust_p[i-1]
     if(s < 0.01) {
       piechart_data$RS_intensity[i] <- 1
     }
-    else if(s < 0.01) {
-      piechart_data$RS_intensity[i] <- 0.8
+    else if(s < 0.5) {
+      piechart_data$RS_intensity[i] <- 0.75
     }
-    else if(s < 0.05) {
-      piechart_data$RS_intensity[i] <- 0.6
+    else if(s < 0.1) {
+      piechart_data$RS_intensity[i] <- 0.5
     }
   }
 
