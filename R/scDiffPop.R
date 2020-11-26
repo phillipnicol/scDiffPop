@@ -218,6 +218,16 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
         data[[i]]$GSEA <- gsea_result}
     }
 
+    print(dim(sco.sub@assays$RNA@counts))
+
+    genes.use <- which(rownames(sco.sub@assays$RNA@counts) %in% rownames(markers.curr))
+    sco.sub@assays$RNA@counts <- sco.sub@assays$RNA@counts[genes.use,]
+    sco.sub@assays$RNA@data <- sco.sub@assays$RNA@data[genes.use,]
+    sco.sub <- FindVariableFeatures(sco.sub)
+
+    print(dim(sco.sub@assays$RNA@counts))
+    deg.curr <- mydeg(sco.sub)
+
     geneList <- deg.curr$log2FoldChange
     names(geneList) <- deg.curr$gene
     x <- markers.curr$avg_logFC
@@ -234,16 +244,7 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
 
     x <- order(x)
 
-    print(dim(sco.sub@assays$RNA@counts))
-
-    genes.use <- which(rownames(sco.sub@assays$RNA@counts) %in% rownames(markers.curr))
-    sco.sub@assays$RNA@counts <- sco.sub@assays$RNA@counts[genes.use,]
-    sco.sub@assays$RNA@data <- sco.sub@assays$RNA@data[genes.use,]
-    sco.sub <- FindVariableFeatures(sco.sub)
-
-    print(dim(sco.sub@assays$RNA@counts))
-
-    results$robust_stat[i] <- mean(y)
+    results$robust_stat[i] <- median(y)
     null_dist <- permutation_test(sco.sub, 250, rownames(markers.curr))
     print(null_dist)
     pos_pval <- 1 - length(which(results$robust_stat[i] > null_dist))/250
@@ -607,9 +608,9 @@ permutation_test <- function(Sco, iterations, markers) {
     intsct2 <- which(markers %in% names(geneList))
     y[intsct2] <- geneList[intsct1]
 
-    null_dist[i] <- mean(y)
-    print("MEAN:")
-    print(mean(y))
+    null_dist[i] <- median(y)
+    print("Median:")
+    print(median(y))
     })
   }
 
