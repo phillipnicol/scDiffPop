@@ -244,7 +244,7 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
 
     x <- order(x)
 
-    results$robust_stat[i] <- median(y)
+    results$robust_stat[i] <- mean(y)
     null_dist <- permutation_test(sco.sub, 250, rownames(markers.curr))
     print(null_dist)
     pos_pval <- 1 - length(which(results$robust_stat[i] > null_dist))/250
@@ -609,8 +609,8 @@ permutation_test <- function(Sco, iterations, markers) {
     y[intsct2] <- geneList[intsct1]
 
     null_dist[i] <- median(y)
-    print("Median:")
-    print(median(y))
+    print("Mean:")
+    print(mean(y))
     })
   }
 
