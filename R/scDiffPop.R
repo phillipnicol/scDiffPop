@@ -244,16 +244,6 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
 
     x <- order(x)
 
-    results$robust_stat[i] <- mean(y)
-    null_dist <- permutation_test(sco.sub, 250, rownames(markers.curr))
-    print(null_dist)
-    pos_pval <- 1 - length(which(results$robust_stat[i] > null_dist))/250
-    neg_pval <- 1 - length(which(results$robust_stat[i] < null_dist))/250
-    results$robust_p[i] <- 2*min(pos_pval, neg_pval)
-
-    hist(null_dist)
-    abline(v = results$robust_stat[i], col = "red")
-
     results$effect[i] <- 0
     results$lmpval[i] <- 1
     try({
@@ -266,6 +256,16 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
     results$lmpval[i] <- fitsum$coefficients[4]
     plot(x=x,y=y, xlab = "Marker l2FC", ylab=  "Phenotype l2FC")
     abline(lm(y~x+0), col = "red")})
+
+    results$robust_stat[i] <- results$effect[i]
+    null_dist <- permutation_test(sco.sub, 250, rownames(markers.curr), x)
+    print(null_dist)
+    pos_pval <- 1 - length(which(results$robust_stat[i] > null_dist))/250
+    neg_pval <- 1 - length(which(results$robust_stat[i] < null_dist))/250
+    results$robust_p[i] <- 2*min(pos_pval, neg_pval)
+
+    hist(null_dist)
+    abline(v = results$robust_stat[i], col = "red")
 
     sco.sub <- Sco[,Sco$seurat_clusters %in% subtree]
     sco.sub <- Seurat::FindVariableFeatures(sco.sub, selection.method = "vst", nfeatures = 2000)
@@ -528,7 +528,7 @@ DESeq2DETest <- function(
   group.info[, "group"] <- factor(x = group.info[, "group"])
   group.info$wellKey <- rownames(x = group.info)
   dds1 <- DESeq2::DESeqDataSetFromMatrix(
-    countData = data.use,
+    countData = data.use + 1, # Add 1 to the count
     colData = group.info,
     design = ~ group
   )
@@ -569,8 +569,9 @@ mydeg <- function(sco.curr) {
 }
 
 
-permutation_test <- function(Sco, iterations, markers) {
+permutation_test <- function(Sco, iterations, markers, markers_avgFC) {
   null_dist <- rep(0, iterations)
+  x <- markers_avgFC
 
   patients <- unique(Sco@meta.data$patient)
   patients_response <- sapply(patients, function(x) {
@@ -608,10 +609,15 @@ permutation_test <- function(Sco, iterations, markers) {
     intsct2 <- which(markers %in% names(geneList))
     y[intsct2] <- geneList[intsct1]
 
-    null_dist[i] <- median(y)
-    print("Mean:")
-    print(mean(y))
+    try({
+      fit <- lm(y~x+0)
+      print(summary(fit))
+      fitsum <- summary(fit)
+      null_dist[i] <- summary(fit)$r.squared*fit$coefficients[1]
+      print("VAL:")
+      print(null_dist[i])
     })
+  })
   }
 
   null_dist[is.na(null_dist)] <- 0
