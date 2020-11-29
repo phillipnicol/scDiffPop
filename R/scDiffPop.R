@@ -240,9 +240,8 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
     print(x)
     print(y)
 
-    x[is.infinite(x)] <- 1000
 
-    x <- order(x)
+    x[is.infinite(x)] <- 1000
 
     results$effect[i] <- 0
     results$lmpval[i] <- 1
@@ -250,14 +249,14 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
     fit <- lm(y~x+0)
     print(summary(fit))
     fitsum <- summary(fit)
-    results$effect[i] <- summary(fit)$r.squared*fit$coefficients[1]
+    results$effect[i] <- 25*fit$coefficients[1]
     print("EFFECT:")
     print(results$effect[i])
     results$lmpval[i] <- fitsum$coefficients[4]
     plot(x=x,y=y, xlab = "Marker l2FC", ylab=  "Phenotype l2FC")
     abline(lm(y~x+0), col = "red")})
 
-    results$robust_stat[i] <- results$effect[i]
+    results$robust_stat[i] <- sum(x*y)
     null_dist <- permutation_test(sco.sub, 250, rownames(markers.curr), x)
     print(null_dist)
     pos_pval <- 1 - length(which(results$robust_stat[i] > null_dist))/250
@@ -609,14 +608,10 @@ permutation_test <- function(Sco, iterations, markers, markers_avgFC) {
     intsct2 <- which(markers %in% names(geneList))
     y[intsct2] <- geneList[intsct1]
 
-    try({
-      fit <- lm(y~x+0)
-      print(summary(fit))
-      fitsum <- summary(fit)
-      null_dist[i] <- summary(fit)$r.squared*fit$coefficients[1]
-      print("VAL:")
-      print(null_dist[i])
-    })
+    x[is.infinite(x)] <- 1000
+    null_dist[i] <- sum(x*y)
+    print("VAL:")
+    print(null_dist[i])
   })
   }
 
