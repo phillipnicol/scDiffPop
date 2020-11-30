@@ -101,7 +101,7 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
 
   results <- data.frame(group = rep(0,nrow(Tree)), enrichment=rep(0,nrow(Tree)), ES = rep(0, nrow(Tree)), p_adj = rep(0,nrow(Tree)), pvalue = rep(0,nrow(Tree)),
                         effect = rep(0,nrow(Tree)), lmpval = rep(0,nrow(Tree)), robust_stat = rep(0, nrow(Tree)),
-                        robust_p = rep(0, nrow(Tree)))
+                        robust_p = rep(0, nrow(Tree)), robust_fdr = rep(0, nrow(Tree)))
   GSEA_list <- list()
   responders.topgenes <- list()
   nonresponders.topgenes <- list()
@@ -282,7 +282,7 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
   }
 
   results$p_adj <- p.adjust(results$pvalue, method = "fdr")
-  results$robust_p <- p.adjust(results$robust_p, method = "fdr")
+  results$robust_fdr <- p.adjust(results$robust_p, method = "fdr")
 
   p0 <- length(unique(Sco@meta.data$patient[Sco@meta.data$binaryResponse == 0]))
   p1 <- length(unique(Sco@meta.data$patient[Sco@meta.data$binaryResponse == 1]))
