@@ -241,7 +241,9 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
     print(y)
 
 
-    x[is.infinite(x)] <- 1000
+    x[is.infinite(x)] <- 10
+    x[x>10] <- 10
+    y[y>10] <- 10
 
     results$effect[i] <- 0
     results$lmpval[i] <- 1
@@ -608,7 +610,9 @@ permutation_test <- function(Sco, iterations, markers, markers_avgFC) {
     intsct2 <- which(markers %in% names(geneList))
     y[intsct2] <- geneList[intsct1]
 
-    x[is.infinite(x)] <- 1000
+    x[is.infinite(x)] <- 10
+    x[x>10] <- 10
+    y[y>10] <- 10
     null_dist[i] <- sum(x*y)
     print("VAL:")
     print(null_dist[i])
