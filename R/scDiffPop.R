@@ -255,11 +255,21 @@ scDiffPop <- function(Sco, use.seurat.clusters = FALSE, find.markers = FALSE, fi
     print("EFFECT:")
     print(results$effect[i])
     results$lmpval[i] <- fitsum$coefficients[4]
-    plot(x=x,y=y, xlab = "Marker l2FC", ylab=  "Phenotype l2FC")
+    plot(x=x,y=y, xlab = "Marker l2FC", ylab=  "Phenotype l2FC", col = "white", main = Tree[i,])
+    text(x,y,labels=names(x))
     abline(lm(y~x+0), col = "red")})
 
+    try({
+    plot(FeaturePlot(Sco[,Sco$seurat_clusters %in% subtree], features = names(x)[1:4]))
+    plot(FeaturePlot(Sco[,Sco$seurat_clusters %in% subtree], features = names(x)[5:8]))
+    plot(FeaturePlot(Sco[,Sco$seurat_clusters %in% subtree], features = names(x)[9:12]))
+    plot(FeaturePlot(Sco[,Sco$seurat_clusters %in% subtree], features = names(x)[13:16]))
+    plot(FeaturePlot(Sco[,Sco$seurat_clusters %in% subtree], features = names(x)[17:20]))
+    plot(FeaturePlot(Sco[,Sco$seurat_clusters %in% subtree], features = names(x)[21:24]))
+    })
     results$robust_stat[i] <- sum(x*y)
-    null_dist <- permutation_test(sco.sub, 250, rownames(markers.curr), x)
+    #null_dist <- permutation_test(sco.sub, 250, rownames(markers.curr), x)
+    null_dist <- rep(0,250)
     print(null_dist)
     pos_pval <- 1 - length(which(results$robust_stat[i] > null_dist))/250
     neg_pval <- 1 - length(which(results$robust_stat[i] < null_dist))/250
