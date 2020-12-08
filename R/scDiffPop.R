@@ -199,7 +199,7 @@ getPseudoBulkCounts <- function(sco, subtree) {
   sco <- sco[,sco$cellType %in% subtree]
   for(i in 1:ncol(pseudobulk)) {
     ixs <- which(sco@meta.data$patient == unique(sco@meta.data$patient)[i])
-    if(is.null(ixs)) {
+    if(length(ixs) == 0) {
       pseudobulk[,i] <- 1
     }
     else {
