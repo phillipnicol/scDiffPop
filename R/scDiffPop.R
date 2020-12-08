@@ -47,12 +47,7 @@ scDiffPop <- function(sco, nmarkers = 25, use_seurat_clusters = FALSE,
     markers <- markers[1:min(nmarkers, nrow(markers)),]
     if(find_markers) {marker_list[[i]] <- extract_markers(markers, results$group[i])}
 
-    #Subset to these genes
-    sco_sub <- sco
-    genes_use <- which(rownames(sco_sub@assays$RNA@counts) %in% rownames(markers))
-    sco_sub@assays$RNA@counts <- sco_sub@assays$RNA@counts[genes_use,]
-    sco_sub@assays$RNA@data <- sco_sub@assays$RNA@data[genes_use,]
-
+    sco_sub <- sco[,sco$cellType %in% subtree]
     x <- markers$avg_logFC; names(x) <- rownames(markers); x <- x/max(x)
     DESeq_metadata <- getPseudoBulkCounts(sco_sub, subtree)
     res <- runDESeq(DESeq_metadata$counts, DESeq_metadata$colData, DESeq_metadata$response)
