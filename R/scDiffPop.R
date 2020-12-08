@@ -47,9 +47,8 @@ scDiffPop <- function(sco, nmarkers = 25, use_seurat_clusters = FALSE,
     markers <- markers[1:min(nmarkers, nrow(markers)),]
     if(find_markers) {marker_list[[i]] <- extract_markers(markers, results$group[i])}
 
-    sco_sub <- sco[,sco$cellType %in% subtree]
     x <- markers$avg_logFC; names(x) <- rownames(markers); x <- x/max(x)
-    DESeq_metadata <- getPseudoBulkCounts(sco_sub, subtree)
+    DESeq_metadata <- getPseudoBulkCounts(sco, subtree)
     res <- runDESeq(DESeq_metadata$counts, DESeq_metadata$colData, DESeq_metadata$response)
     y <- res$stat; names(y) <- rownames(res); y <- y[names(y) %in% names(x)]; y <- y[names(x)]
     plot(x,y,xlab="Marker Strength", ylab = "Phenotype stat", col = "white")
