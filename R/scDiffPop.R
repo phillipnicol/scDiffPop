@@ -53,11 +53,11 @@ scDiffPop <- function(sco, nmarkers = 25, use_seurat_clusters = FALSE,
     sco_sub@assays$RNA@counts <- sco_sub@assays$RNA@counts[genes_use,]
     sco_sub@assays$RNA@data <- sco_sub@assays$RNA@data[genes_use,]
 
+    x <- markers$avg_logFC; names(x) <- rownames(markers); x <- x/max(x)
     DESeq_metadata <- getPseudoBulkCounts(sco_sub, subtree)
     res <- runDESeq(DESeq_metadata$counts, DESeq_metadata$colData, DESeq_metadata$response)
-    x <- markers$avg_logFC; names(x) <- rownames(markers); x <- x/max(x)
-    y <- res$stat; names(y) <- rownames(res); y <- y[names(x)]
-    plot(x,y,xlab="Marker LFC", ylab = "Phenotype Stat", col = "white")
+    y <- res$stat; names(y) <- rownames(res); y <- y[names(y) %in% names(x)]; y <- y[names(x)]
+    plot(x,y,xlab="Marker Strength", ylab = "Phenotype stat", col = "white")
     text(x,y,labels=names(x), cex = 0.5)
 
     stat <- sum(x*y)
@@ -230,7 +230,7 @@ permutation_test <- function(x, nperm, DESeq_metadata, stat, ncores) {
   null_dist <- unlist(parallel::mclapply(c(1:nperm), function(i) {
     vec <- sample(vec, size = length(vec), replace = FALSE)
     res <- runDESeq(DESeq_metadata$counts[,vec], DESeq_metadata$colData, DESeq_metadata$response)
-    y <- res$stat; names(y) <- rownames(res); y <- y[names(x)]
+    y <- res$stat; names(y) <- rownames(res); y <- y[names(y) %in% names(x)]; y <- y[names(x)]
     return(sum(x*y))
   }, mc.cores = ncores))
   print(null_dist)
