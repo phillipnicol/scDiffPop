@@ -7,7 +7,7 @@ setClass("scDiffPop", slots = list(results = "data.frame",
 scDiffPop <- function(sco, nmarkers = 25, use_seurat_clusters = FALSE,
                       find_markers = TRUE, find_pathways = FALSE, nperm = 250,
                       nmarker = 25, ncores = 1) {
-  if(!("cellType" %in% colnames(sco@meta.data)) && !(use.seurat.clusters)) {
+  if(!("cellType" %in% colnames(sco@meta.data)) && !(use_seurat_clusters)) {
     stop("Seurat object meta data must have column 'cellType.")
   }
   if(!("response" %in% colnames(sco@meta.data))) {
@@ -197,12 +197,14 @@ getPseudoBulkCounts <- function(sco, subtree) {
     response[i] <- sco@meta.data$response[ixs[1]]
   }
   sco <- sco[,sco$cellType %in% subtree]
+  counts <- as.matrix(sco@assays$RNA@counts)
   for(i in 1:ncol(pseudobulk)) {
     ixs <- which(sco@meta.data$patient == unique(sco@meta.data$patient)[i])
     if(length(ixs) == 0) {
       pseudobulk[,i] <- 1
     }
     else {
+      print(dim(counts[,ixs]))
       pseudobulk[,i] <- rowSums(counts[,ixs]) + 1
     }
   }
