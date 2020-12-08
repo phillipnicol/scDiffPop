@@ -196,16 +196,18 @@ getPseudoBulkCounts <- function(sco, subtree) {
     ixs <- which(sco@meta.data$patient == unique(sco@meta.data$patient)[i])
     response[i] <- sco@meta.data$response[ixs[1]]
   }
-  sco <- sco[,sco$cellType %in% subtree]
-  counts <- as.matrix(sco@assays$RNA@counts)
+  sco_sub <- sco[,sco$cellType %in% subtree]
+  counts <- sco_sub@assays$RNA@counts
   for(i in 1:ncol(pseudobulk)) {
-    ixs <- which(sco@meta.data$patient == unique(sco@meta.data$patient)[i])
+    ixs <- which(sco_sub@meta.data$patient == unique(sco@meta.data$patient)[i])
     if(length(ixs) == 0) {
       pseudobulk[,i] <- 1
     }
+    else if(length(ixs) == 1) {
+      pseudobulk[,i] <- counts[,ixs] + 1
+    }
     else {
-      print(dim(counts[,ixs]))
-      pseudobulk[,i] <- rowSums(counts[,ixs]) + 1
+      pseudobulk[,i] <- Matrix::rowSums(counts[,ixs]) + 1
     }
   }
   colData <- data.frame(gene = c(1:length(response)), response = as.factor(response))
