@@ -228,7 +228,7 @@ runDESeq <- function(counts, colData, response) {
 }
 
 permutation_test <- function(x, nperm, dds, stat, ncores) {
-  vec <- c(1:10)
+  vec <- c(1:ncol(dds))
   print(dds)
   null_dist <- unlist(parallel::mclapply(c(1:nperm), function(i) {
     vec <- sample(vec, size = length(vec), replace = FALSE)
