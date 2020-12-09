@@ -48,16 +48,18 @@ scDiffPop <- function(sco, nmarkers = 25, use_seurat_clusters = FALSE,
     if(find_markers) {marker_list[[i]] <- extract_markers(markers, results$group[i])}
 
     x <- markers$avg_logFC; names(x) <- rownames(markers); x <- x/max(x)
-    DESeq_metadata <- getPseudoBulkCounts(sco, subtree)
-    res <- runDESeq(DESeq_metadata$counts, DESeq_metadata$colData, DESeq_metadata$response)
+    dds <- getPseudoBulkCounts(sco, subtree)
+    res <- results(dds)
+    print("DESEQ Complete")
     y <- res$stat; names(y) <- rownames(res); y <- y[names(y) %in% names(x)]; y <- y[names(x)]
+    dds <- dds[rownames(dds) %in% names(x),]
     plot(x,y,xlab="Marker Strength", ylab = "Phenotype stat", col = "white")
     text(x,y,labels=names(x), cex = 0.5)
 
     stat <- sum(x*y)
     print("STAT:"); print(stat/nmarkers)
     print("VARIANCE:"); print(var(x*y))
-    pval <- permutation_test(x, nperm, DESeq_metadata, stat, ncores)
+    pval <- permutation_test(x, nperm, dds, stat, ncores)
     results$effect[i] <- stat/nmarkers
     results$pval[i] <- pval
     ifelse(stat > 0, results$enrichment[i] <- phenotypes[1], results$enrichment[i] <- phenotypes[2])
@@ -211,9 +213,11 @@ getPseudoBulkCounts <- function(sco, subtree) {
     }
   }
   colData <- data.frame(gene = c(1:length(response)), response = as.factor(response))
-  DESeq_metadata <- list()
-  DESeq_metadata$counts <- pseudobulk; DESeq_metadata$colData <- colData; DESeq_metadata$design <- as.factor(response)
-  return(DESeq_metadata)
+  dds <- DESeq2::DESeqDataSetFromMatrix(countData = pseudobulk, colData = colData, design = ~response)
+  dds <- estimateSizeFactors(dds)
+  dds <- estimateDispersions(dds)
+  dds <- nbinomWaldTest(dds)
+  return(dds)
 }
 
 runDESeq <- function(counts, colData, response) {
@@ -223,11 +227,14 @@ runDESeq <- function(counts, colData, response) {
   return(results)
 }
 
-permutation_test <- function(x, nperm, DESeq_metadata, stat, ncores) {
-  vec <- c(1:ncol(DESeq_metadata$counts))
+permutation_test <- function(x, nperm, dds, stat, ncores) {
+  vec <- c(1:10)
+  print(dds)
   null_dist <- unlist(parallel::mclapply(c(1:nperm), function(i) {
     vec <- sample(vec, size = length(vec), replace = FALSE)
-    res <- runDESeq(DESeq_metadata$counts[,vec], DESeq_metadata$colData, DESeq_metadata$response)
+    dds$response <- dds$response[vec]
+    dds <- nbinomWaldTest(dds)
+    res <- results(dds)
     y <- res$stat; names(y) <- rownames(res); y <- y[names(y) %in% names(x)]; y <- y[names(x)]
     return(sum(x*y))
   }, mc.cores = ncores))
