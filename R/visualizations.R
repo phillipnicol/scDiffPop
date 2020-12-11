@@ -25,6 +25,23 @@ setMethod("showTree", signature("scDiffPop"), function(object) {
   graph_data$color <- ifelse(graph_data$color > 0, "turquoise", "hotpink1")
   graph_data$color[1] <- "white"
   graph_data$intensity <- c(0,(abs(object@results$effect)/(max(abs(object@results$effect)))))
+  graph_data$intensity <- graph_data$intensity*(1-c(0,object@results$padj))
+  print(graph_data)
+
+  for(i in 2:length(V(G)$name)) {
+    s <- out@results$padj[i-1]
+    print(s)
+    if(s < 0.001) {
+      V(G)$name[i] <- paste(graph_data$name[i], "***")
+    }
+    else if(s < 0.01) {
+      V(G)$name[i] <- paste(graph_data$name[i], "**")
+    }
+    else if(s < 0.05) {
+      V(G)$name[i] <- paste(graph_data$name[i], "*")
+    }
+  }
+
   print(graph_data)
 
   p <- ggraph(G, "manual", x= V(G)$x, y=V(G)$y) + geom_edge_link()

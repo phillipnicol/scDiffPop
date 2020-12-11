@@ -28,7 +28,7 @@ scDiffPop <- function(sco, nmarkers = 25, use_seurat_clusters = FALSE,
   Tree <- makeCellTree(sco)
 
   cell_types <- unique(sco@meta.data$cellType)
-  phenotypes <- unique(sco@meta.data$response)
+  phenotypes <- sort(unique(sco@meta.data$response))
   results <- data.frame(group = Tree[,1], enrichment = rep(0, nrow(Tree)), effect = rep(0, nrow(Tree)), pval = rep(0, nrow(Tree)),
                         padj = rep(0, nrow(Tree)))
   marker_list <- list()
@@ -133,6 +133,8 @@ makeCellTree <- function(sco) {
 }
 
 splitGroup <- function(sco_sub, ixs) {
+  downsample <- min(1000, nrow(sco_sub@meta.data))
+  sco_sub <- sco_sub[,sample(1:nrow(sco_sub@meta.data), size = downsample, replace = FALSE)]
   if(length(ixs) == 2) {
     return(c(1,2))
   }
@@ -241,9 +243,8 @@ permutation_test <- function(x, nperm, dds, stat, ncores) {
   print(null_dist)
   hist(null_dist, main = "Null distribution histogram")
   abline(v=stat, col = "red")
-  pos_pval <- (length(which(stat > null_dist)) + 1)/(nperm + 1)
-  neg_pval <- (length(which(stat < null_dist)) + 1)/(nperm + 1)
-  pval <- min(2*min(pos_pval, neg_pval),1)
+  pval <- (sum(abs(null_dist) > abs(stat)) + 1)/(nperm + 1)
+  print("PVAL:"); print(pval)
   return(pval)
 }
 
