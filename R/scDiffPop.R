@@ -47,7 +47,7 @@ scDiffPop <- function(sco, nmarkers = 25, use_seurat_clusters = FALSE,
     markers <- markers[1:min(nmarkers, nrow(markers)),]
     if(find_markers) {marker_list[[i]] <- extract_markers(markers, results$group[i])}
 
-    x <- markers$avg_logFC; names(x) <- rownames(markers); x <- x/max(x)
+    x <- markers$avg_logFC; names(x) <- rownames(markers); x[x>10] <- 10; x <- x/max(x)
     dds <- getPseudoBulkCounts(sco, subtree)
     res <- results(dds)
     print("DESEQ Complete")
@@ -56,13 +56,14 @@ scDiffPop <- function(sco, nmarkers = 25, use_seurat_clusters = FALSE,
     plot(x,y,xlab="Marker Strength", ylab = "Phenotype stat", col = "white")
     text(x,y,labels=names(x), cex = 0.5)
 
+    print(x); print(y)
     stat <- sum(x*y)
     print("STAT:"); print(stat/nmarkers)
     print("VARIANCE:"); print(var(x*y))
     pval <- permutation_test(x, nperm, dds, stat, ncores)
     results$effect[i] <- stat/nmarkers
     results$pval[i] <- pval
-    ifelse(stat > 0, results$enrichment[i] <- phenotypes[1], results$enrichment[i] <- phenotypes[2])
+    ifelse(stat > 0, results$enrichment[i] <- phenotypes[2], results$enrichment[i] <- phenotypes[1])
   }
   results$padj <- p.adjust(results$pval, method = "fdr")
   out <- new("scDiffPop", results = results, tree = Tree, markers = marker_list, counts = counts)
