@@ -134,8 +134,15 @@ makeCellTree <- function(sco) {
 }
 
 splitGroup <- function(sco_sub, ixs) {
-  downsample <- min(1000, nrow(sco_sub@meta.data))
-  sco_sub <- sco_sub[,sample(1:nrow(sco_sub@meta.data), size = downsample, replace = FALSE)]
+  downsample <- min(100, nrow(sco_sub@meta.data))
+  down_ixs <- c()
+  for(i in ixs) {
+    rxs <- which(sco_sub@meta.data$cellType == i)
+    downsample <- min(100, length(rxs))
+    rxs <- rxs[sample(length(rxs), downsample, replace = FALSE)]
+    down_ixs <- c(down_ixs, rxs)
+  }
+  sco_sub <- sco_sub[,down_ixs]
   if(length(ixs) == 2) {
     return(c(1,2))
   }
@@ -155,7 +162,6 @@ splitGroup <- function(sco_sub, ixs) {
   pseudobulk <- matrix(0, nrow = 0, ncol = 50)
   for(i in ixs) {
     rxs <- which(sco_sub@meta.data$cellType == i)
-    if(length(rxs) == 0) {print("FLAG")}
     pseudobulk <- rbind(pseudobulk, colMeans(embeddings[rxs,]))
   }
   #Cluster via k means
