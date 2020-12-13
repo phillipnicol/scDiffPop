@@ -155,6 +155,7 @@ splitGroup <- function(sco_sub, ixs) {
   pseudobulk <- matrix(0, nrow = 0, ncol = 50)
   for(i in ixs) {
     rxs <- which(sco_sub@meta.data$cellType == i)
+    if(length(rxs) == 0) {print("FLAG")}
     pseudobulk <- rbind(pseudobulk, colMeans(embeddings[rxs,]))
   }
   #Cluster via k means
