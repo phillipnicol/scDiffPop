@@ -1,12 +1,12 @@
 setClass("scDiffPop", slots = list(results = "data.frame",
                                     tree = "matrix",
                                     counts = "matrix",
+                                    meta.data = "list",
                                     markers = "list",
                                     pathways = "list"))
 
-scDiffPop <- function(sco, nmarkers = 25, use_seurat_clusters = FALSE,
-                      find_markers = TRUE, find_pathways = FALSE, nperm = 250,
-                      nmarker = 25, ncores = 1) {
+scDiffPop <- function(sco, nmarkers = 25, use_seurat_clusters = FALSE, find_pathways = FALSE,
+                      nperm = 250, nmarker = 25, ncores = 1) {
   if(!("cellType" %in% colnames(sco@meta.data)) && !(use_seurat_clusters)) {
     stop("Seurat object meta data must have column 'cellType.")
   }
@@ -45,7 +45,6 @@ scDiffPop <- function(sco, nmarkers = 25, use_seurat_clusters = FALSE,
     Idents(sco) = as.factor(ifelse(sco$cellType %in% subtree, 1 ,2))
     markers <- Seurat::FindMarkers(sco, min.pct = 0.1, only.pos = TRUE, logfc.threshold = 0.25, ident.1 = 1)
     markers <- markers[1:min(nmarkers, nrow(markers)),]
-    if(find_markers) {marker_list[[i]] <- extract_markers(markers, results$group[i])}
 
     x <- markers$avg_logFC; names(x) <- rownames(markers); x[x>10] <- 10; x <- x/max(x)
     dds <- getPseudoBulkCounts(sco, subtree)
@@ -55,6 +54,11 @@ scDiffPop <- function(sco, nmarkers = 25, use_seurat_clusters = FALSE,
     dds <- dds[rownames(dds) %in% names(x),]
     plot(x,y,xlab="Marker Strength", ylab = "Phenotype stat", col = "white")
     text(x,y,labels=names(x), cex = 0.5)
+
+    genes_use <- list()
+    genes_use$main <- Tree[i,1]
+    genes_use$x <- x; genes_use$y <- y
+    marker_list[[i]] <- genes_use
 
     print(x); print(y)
     stat <- sum(x*y)
@@ -66,7 +70,9 @@ scDiffPop <- function(sco, nmarkers = 25, use_seurat_clusters = FALSE,
     ifelse(stat > 0, results$enrichment[i] <- phenotypes[2], results$enrichment[i] <- phenotypes[1])
   }
   results$padj <- p.adjust(results$pval, method = "fdr")
-  out <- new("scDiffPop", results = results, tree = Tree, markers = marker_list, counts = counts)
+  meta.data <- list()
+  meta.data$phenotypes <- c(phenotypes[1], phenotypes[2])
+  out <- new("scDiffPop", results = results, tree = Tree, meta.data = meta.data, markers = marker_list, counts = counts)
   return(out)
 }
 
@@ -254,12 +260,5 @@ permutation_test <- function(x, nperm, dds, stat, ncores) {
   pval <- (sum(abs(null_dist) > abs(stat)) + 1)/(nperm + 1)
   print("PVAL:"); print(pval)
   return(pval)
-}
-
-extract_markers <- function(markers, group) {
-  markers_list <- list()
-  markers_list$group <- group
-  markers_list$markers <- markers
-  return(markers_list)
 }
 
