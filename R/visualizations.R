@@ -26,18 +26,22 @@ setMethod("showTree", signature("scDiffPop"), function(object, type = "effect") 
   graph_data$color[1] <- "white"
   graph_data$intensity <- c(0, object@results$effect/(max(abs(object@results$effect))))
   graph_data$intensity <- graph_data$intensity
+  graph_data$transparency <- rep(0.25, nrow(graph_data))
 
   for(i in 2:length(V(G)$name)) {
     s <- out@results$padj[i-1]
     print(s)
-    if(s < 0.001) {
+    if(s < 0.01) {
       V(G)$name[i] <- paste(graph_data$name[i], "***")
-    }
-    else if(s < 0.01) {
-      V(G)$name[i] <- paste(graph_data$name[i], "**")
+      graph_data$transparency[i] <- 1
     }
     else if(s < 0.05) {
+      V(G)$name[i] <- paste(graph_data$name[i], "**")
+      graph_data$transparency[i] <- 0.75
+    }
+    else if(s < 0.1) {
       V(G)$name[i] <- paste(graph_data$name[i], "*")
+      graph_data$transparency[i] <- 0.5
     }
   }
 
@@ -62,9 +66,9 @@ setMethod("showTree", signature("scDiffPop"), function(object, type = "effect") 
       data = graph_data ,
       cols = c("pht1", "pht2"),
       colour = NA,
-      legend_name = "Phenotype",
-    ) + scale_alpha_manual(values = c(0.3, 1 - object@results$padj), name = NULL, labels = NULL)
-    p <- p + scale_fill_manual(values = c("blue", "red"), labels = c("pht1", "pht2"))
+      legend_name = "Condition",
+    ) + scale_alpha_manual(values = graph_data$transparency, name = NULL, labels = NULL)
+    p <- p + scale_fill_manual(values = c("blue", "red"), labels = c(object@meta.data$phenotypes[1], object@meta.data$phenotypes[2]))
     p <- p + geom_node_label(aes(label = name, angle = 90), repel = FALSE, nudge_y = 0.25, col = "midnightblue")
     p <- p + theme_graph()
     plot(p)

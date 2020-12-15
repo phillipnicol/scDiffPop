@@ -71,7 +71,7 @@ scDiffPop <- function(sco, nmarkers = 25, use_seurat_clusters = FALSE, find_path
   }
   results$padj <- p.adjust(results$pval, method = "fdr")
   meta.data <- list()
-  meta.data$phenotypes <- c(phenotypes[1], phenotypes[2])
+  meta.data$phenotypes <- c(phenotypes[2], phenotypes[1])
   out <- new("scDiffPop", results = results, tree = Tree, meta.data = meta.data, markers = marker_list, counts = counts)
   return(out)
 }
