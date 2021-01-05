@@ -1,84 +1,24 @@
-setClass("scDiffPop", slots = list(results = "data.frame",
-                                    tree = "matrix",
-                                    counts = "matrix",
-                                    meta.data = "list",
-                                    markers = "list",
-                                    pathways = "list"))
 
-scDiffPop <- function(sco, nmarkers = 25, use_seurat_clusters = FALSE, find_pathways = FALSE,
-                      nperm = 250, nmarker = 25, ncores = 1) {
-  if(!("cellType" %in% colnames(sco@meta.data)) && !(use_seurat_clusters)) {
-    stop("Seurat object meta data must have column 'cellType.")
+
+
+scDiffPop <- function(Sco) {
+  if(!("cellType" %in% colnames(Sco@meta.data))) {
+    stop("Seurat object meta data must have column 'cellType'.")
   }
-  if(!("response" %in% colnames(sco@meta.data))) {
+  if(!("response" %in% colnames(Sco@meta.data))) {
     stop("Seurat object meta data must have column 'response'.")
   }
-  if(length(unique(sco@meta.data$response)) != 2) {
+  if(length(unique(Sco@meta.data$response)) != 2) {
     stop("Response column must have exactly two unique elements.")
   }
 
-  ## If using seurat clusters, then the cell types are the cluster IDs.
-  if(use_seurat_clusters) {
-    #CHECK THIS EXISTS
-    cell_types <- as.integer(sco$seurat_clusters)
-    sco@meta.data$cellType <- sapply(cell_types, function(x) {paste("s", x, sep ="")})
-  }
+  cell_types <- unique(Sco@meta.data$cellType)
+  Sco@meta.data$seurat_clusters <- sapply(Sco@meta.data$cellType, function(x) {
+    return(which(cell_types == x) - 1)
+  })
 
-  ### Make the cell Tree
-  Tree <- makeCellTree(sco)
-
-  cell_types <- unique(sco@meta.data$cellType)
-  phenotypes <- sort(unique(sco@meta.data$response))
-  results <- data.frame(group = Tree[,1], enrichment = rep(0, nrow(Tree)), effect = rep(0, nrow(Tree)), pval = rep(0, nrow(Tree)),
-                        padj = rep(0, nrow(Tree)))
-  marker_list <- list()
-  counts <- matrix(0, nrow = nrow(Tree)+1, ncol = 2); colnames(counts) <- c(phenotypes[1], phenotypes[2])
-  counts[1,] <- c(length(which(sco@meta.data$response == phenotypes[1])), length(which(sco@meta.data$response == phenotypes[2])))
-  for(i in 1:nrow(Tree)) {
-    cat("ITERATION: ", i, "\n")
-    subtree <- as.vector(DFS(Tree, i, cell_types))
-    print(subtree)
-    counts[i+1,1] <- sum(sco@meta.data$cellType[sco@meta.data$response == phenotypes[1]] %in% subtree)
-    counts[i+1,2] <- sum(sco@meta.data$cellType[sco@meta.data$response == phenotypes[2]] %in% subtree)
-
-    #Find Markers of this node
-    Idents(sco) = as.factor(ifelse(sco$cellType %in% subtree, 1 ,2))
-    markers <- Seurat::FindMarkers(sco, min.pct = 0.1, only.pos = TRUE, logfc.threshold = 0.25, ident.1 = 1)
-    markers <- markers[1:min(nmarkers, nrow(markers)),]
-
-    x <- markers$avg_logFC; names(x) <- rownames(markers); x[x>10] <- 10; x <- x/max(x)
-    dds <- getPseudoBulkCounts(sco, subtree)
-    res <- results(dds)
-    print("DESEQ Complete")
-    y <- res$stat; names(y) <- rownames(res); y <- y[names(y) %in% names(x)]; y <- y[names(x)]
-    dds <- dds[rownames(dds) %in% names(x),]
-    plot(x,y,xlab="Marker Strength", ylab = "Phenotype stat", col = "white")
-    text(x,y,labels=names(x), cex = 0.5)
-
-    genes_use <- list()
-    genes_use$main <- Tree[i,1]
-    genes_use$x <- x; genes_use$y <- y
-    marker_list[[i]] <- genes_use
-
-    print(x); print(y)
-    stat <- sum(x*y)
-    print("STAT:"); print(stat/nmarkers)
-    print("VARIANCE:"); print(var(x*y))
-    pval <- permutation_test(x, nperm, dds, stat, ncores)
-    results$effect[i] <- stat/nmarkers
-    results$pval[i] <- pval
-    ifelse(stat > 0, results$enrichment[i] <- phenotypes[2], results$enrichment[i] <- phenotypes[1])
-  }
-  results$padj <- p.adjust(results$pval, method = "fdr")
-  meta.data <- list()
-  meta.data$phenotypes <- c(phenotypes[2], phenotypes[1])
-  out <- new("scDiffPop", results = results, tree = Tree, meta.data = meta.data, markers = marker_list, counts = counts)
-  return(out)
-}
-
-makeCellTree <- function(sco) {
-  cell_types <- unique(sco@meta.data$cellType)
   group <- rep(1, length(cell_types))
+
   TreeMat <- matrix(1, nrow = length(cell_types), ncol = 1)
   counter <- 1
 
@@ -87,7 +27,7 @@ makeCellTree <- function(sco) {
     ixs <- which(group == Mode(group))
     print(group)
     cat("Current group: ", cell_types[ixs], "\n")
-    split <- splitGroup(sco[,sco$cellType %in% cell_types[ixs]], cell_types[ixs])
+    split <- SplitGroup(Sco[,Sco$seurat_clusters %in% (ixs - 1)], ixs)
 
     if(length(unique(split)) > 1) {
       counter <- counter + 1
@@ -103,6 +43,7 @@ makeCellTree <- function(sco) {
       for(j in ixs) {
         counter <- counter + 1
         group[j] <- counter
+
         TreeMat <- cbind(TreeMat, group)
       }
     }
@@ -122,8 +63,6 @@ makeCellTree <- function(sco) {
     }
   }
 
-  ### Process Tree
-
   #Change names of leaves
   cntr <- 1
   for(ct in TreeMat[,ncol(TreeMat)]) {
@@ -136,49 +75,243 @@ makeCellTree <- function(sco) {
   colnames(Tree) <- c("Child", "Parent")
   rownames(Tree) <- c(1:nrow(Tree))
 
-  return(Tree)
+  print(Tree)
+
+  TreeIG <- cbind(Tree[,2], Tree[,1])
+  TreeIG <- as.matrix(TreeIG)
+
+  G <- igraph::graph_from_edgelist(TreeIG)
+
+  binaryResponse <- Sco$response
+  unique_phenotype <- unique(Sco$response)
+  binaryResponse[Sco$response == unique_phenotype[1]] <- 0
+  binaryResponse[Sco$response == unique_phenotype[2]] <- 1
+  binaryResponse <- as.integer(binaryResponse)
+  Sco@meta.data$binaryResponse <- binaryResponse
+
+  Counts <- matrix(0, nrow = nrow(Tree), ncol = 2)
+
+  out <- list()
+  out$subtree <- list()
+
+  # sco.sub = GSE145281[, GSE145281$seurat_clusters %in% c(10,11)]
+  responders.enrichment = nonresponders.enrichment = list()
+  responders.topgenes = nonresponders.topgenes = list()
+  GSEA_list <- list()
+  contingency.tables <- list()
+  for (i in 1:nrow(Tree)) {
+    cat("ITERATION: ", i, "\n")
+    subtree <- as.vector(DFS(Tree, i, cell_types))
+    out$subtree[[i]] <- subtree
+    subtree <- which(cell_types %in% subtree) - 1
+    print(subtree)
+    old_ix <- as.integer(Tree[i,2]) - 1
+    oldsubtree  <- which(cell_types %in% as.vector(DFS(Tree,old_ix,cell_types))) - 1
+    print(oldsubtree)
+    sco.sub = Sco[,Sco$seurat_clusters %in% oldsubtree] %>%
+      Seurat::FindVariableFeatures(selection.method = "vst", nfeatures = 2000)
+
+    ## Perform differential expression
+    deg.curr = mydeg(sco.sub)
+    #deg.curr = deg.curr[padj<0.1]
+
+    ## Find markers in children
+    seurat.clust.cell.1 = subtree
+    Idents(sco.sub) = ifelse(sco.sub$seurat_clusters %in% seurat.clust.cell.1, 1 ,2) %>% as.factor
+    markers.curr <- Seurat::FindMarkers(sco.sub, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25, ident.1 = 1)
+    #markers.curr = FindAllMarkers(sco.sub, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25) ## this will give markers of both cell.1 (child1) and cell.2 (child2)
+    #markers.top  = markers.curr %>% group_by(cluster) %>% top_n(n = 700, wt = avg_logFC)
+    #term2gene  = markers.top %>%  as.data.table %>%
+      #.[,.(term=cluster,gene=gene)] %>% as.data.frame
+    term2gene <- matrix(0, nrow = nrow(markers.curr), ncol = 2) %>% as.data.frame
+    term2gene[,1] <- 1; term2gene[,2] <- rownames(markers.curr)
+    colnames(term2gene) <- c("term", "gene")
+    if(nrow(term2gene) >= 50) {
+      term2gene <- term2gene[1:50,]
+    }
+
+    # Make contingency table
+    a <- length(which(deg.curr[log2FoldChange > 0]$gene %in% term2gene[term2gene[,1] == 1,2]))
+    b <- length(which(deg.curr[log2FoldChange < 0]$gene %in% term2gene[term2gene[,1] == 1,2]))
+
+    c <- length(deg.curr[log2FoldChange > 0]$gene) - a
+    d <- length(deg.curr[log2FoldChange < 0]$gene) - b
+
+    C <- matrix(c(a,b,c,d), nrow = 2, ncol = 2, byrow = TRUE)
+    responders.enrichment[[i]] <- fisher.test(C, alternative = "greater")$p.value
+    nonresponders.enrichment[[i]] <- fisher.test(C, alternative = "less")$p.value
+    print(C)
+    contingency.tables[[i]] <- C
+
+
+    print(responders.enrichment[[i]])
+    print(nonresponders.enrichment[[i]])
+
+    #term2gene <- term2gene[term2gene$term == 1,]
+    # GSEA
+    geneList <- deg.curr$log2FoldChange
+    names(geneList) <- deg.curr$gene
+    geneList <- sort(geneList, decreasing = TRUE)
+    if(length(intersect(names(geneList), term2gene$gene)) == 0) {
+      gsea_result <- list()
+      gsea_result$pvalue <- 1.0
+      gsea_result$ES <- 0.0
+      GSEA_list[[i]] <- gsea_result
+    }
+    else {
+    GSEA_list[[i]] <- clusterProfiler::GSEA(geneList, TERM2GENE = term2gene, pvalueCutoff = 1)
+
+    gsea_result <- list()
+    if(length(GSEA_list[[i]]@result$pvalue) == 0) {
+      gsea_result$pvalue <- 1.0
+      gsea_result$ES <- 0.0
+    }
+    else {
+      gsea_result$ES <- GSEA_list[[i]]@result$enrichmentScore
+      gsea_result$pvalue <- GSEA_list[[i]]@result$pvalue
+    }
+    print(gsea_result)
+    GSEA_list[[i]] <- gsea_result }
+
+    sco.sub = Sco[,Sco$seurat_clusters %in% subtree] %>%
+      FindVariableFeatures(selection.method = "vst", nfeatures = 2000)
+    ncells <- nrow(sco.sub@meta.data)
+    Counts[i,1] <- nrow(sco.sub@meta.data[sco.sub@meta.data$binaryResponse == 0,])
+    Counts[i,2] <- nrow(sco.sub@meta.data[sco.sub@meta.data$binaryResponse == 1,])
+    print(Counts[i,1])
+    print(Counts[i,2])
+
+    #Do differential expression
+    try({
+      deg.curr = mydeg(sco.sub)
+      responders.topgenes[[i]] <- deg.curr[log2FoldChange > 0]$gene[1]
+      nonresponders.topgenes[[i]] <- deg.curr[log2FoldChange < 0]$gene[1]})
+  }
+
+  out$responders.enrichment <- responders.enrichment
+  out$nonresponders.enrichment <- nonresponders.enrichment
+  out$responders.topgenes <- responders.topgenes
+  out$nonresponders.topgenes <- nonresponders.topgenes
+  out$contingency.tables <- contingency.tables
+  out$GSEA <- GSEA_list
+
+  p0 <- length(unique(Sco@meta.data$patient[Sco@meta.data$binaryResponse == 0]))
+  p1 <- length(unique(Sco@meta.data$patient[Sco@meta.data$binaryResponse == 1]))
+
+
+  xy <- layout_as_tree(G)
+  V(G)$x <- xy[, 1]
+  V(G)$y <- xy[, 2]
+
+  pht1_size <- length(which(Sco@meta.data$binaryResponse == 0)); pht2_size <- length(which(Sco@meta.data$binaryResponse == 1))
+  Counts <- rbind(c(pht1_size, pht2_size), Counts)
+
+  Counts_c <- Counts
+  Counts[,1] <- (Counts[,1]/p0) / (Counts[,1]/p0 + Counts[,2]/p1)
+  Counts[,2] <- (Counts[,2]/p1) / (Counts_c[,1]/p0 + Counts[,2]/p1)
+
+  V(G)$pht1 <- Counts[,1]
+  V(G)$pht2 <- Counts[,2]
+
+  ix <- which(nonresponders.enrichment < 0.05 | responders.enrichment < 0.05)
+
+  #Save name for later
+  name_clean <- V(G)$name
+
+  for(i in 1:length(GSEA_list)) {
+    s <- GSEA_list[[i]]$pvalue
+    if(s < 0.001) {
+      V(G)$name[i+1] <- paste(V(G)$name[i+1], "***", sep="")
+    }
+    else if(s < 0.01) {
+      V(G)$name[i+1] <- paste(V(G)$name[i+1], "**", sep="")
+    }
+    else if(s < 0.05) {
+      V(G)$name[i+1] <- paste(V(G)$name[i+1], "*", sep="")
+    }
+  }
+
+  p <- ggraph(G, "manual", x=  V(G)$x, y=V(G)$y) + geom_edge_link() #+ geom_node_point(aes(size = 2, col = names(effect)))
+  #p <- p + geom_node_text(aes(x = x*1.005, y=y*1.005, label = name, angle = 90),
+  p <- p +   geom_scatterpie(
+    cols = c("pht1", "pht2"),
+    data = igraph::as_data_frame(G, "vertices"),
+    colour = NA,
+    pie_scale = 0.75,
+    legend_name = "Phenotype"
+  )
+  p <- p + scale_fill_manual(values = c("red", "blue"),
+                             labels = c(unique_phenotype[1], unique_phenotype[2]))
+  p <- p + geom_node_label(aes(label = name, angle = 90), repel = FALSE, nudge_y = 0.25, col = "midnightblue")
+  p <- p + theme_graph()
+
+  out$counts <- Counts
+  out$piechart <- p
+
+
+  xy <- layout_as_tree(G)
+  V(G)$x <- xy[, 1]
+  V(G)$y <- xy[, 2]
+
+  V(G)$resp <- c(" ", unlist(responders.topgenes))
+  V(G)$nonresp <- c(" ", unlist(nonresponders.topgenes))
+
+  p <- ggraph(G, "manual", x=  V(G)$x, y=V(G)$y) + geom_edge_link() #+ geom_node_point(aes(size = 2, col = names(effect)))
+  #p <- p + geom_node_text(aes(x = x*1.005, y=y*1.005, label = name, angle = 90),
+  #p <- p+ geom_node_label(aes(label = V(G)$Blood), repel = TRUE, col = "red")
+  p <- p + geom_node_text(aes(label = V(G)$resp), repel = FALSE, nudge_x = -0.3, nudge_y = 0, col = "red")
+  p <- p + geom_node_text(aes(label = V(G)$nonresp), repel = FALSE, nudge_x = -0.3, nudge_y = 0.15, col = "blue")
+  p <- p + geom_node_point(size = 1)
+  p <- p + geom_node_label(aes(label = name, angle = 90), repel = FALSE, nudge_y = 0.25, col = "midnightblue")
+  #p <- p + geom_node_label(aes(label = name, angle = 90), repel = FALSE, nudge_y = 0.25, col = "midnightblue")
+  p <- p + theme_graph()
+
+  out$genegraph <- p
+
+  #Now do GSEA graph
+  V(G)$name <- name_clean
+  V(G)$ES <- sapply(GSEA_list, function(x) {round(x$ES,2)})
+  V(G)$ES <- c("", V(G)$ES)
+  p <- ggraph(G, "manual", x=  V(G)$x, y=V(G)$y) + geom_edge_link() #+ geom_node_point(aes(size = 2, col = names(effect)))
+  #p <- p + geom_node_text(aes(x = x*1.005, y=y*1.005, label = name, angle = 90),
+  #p <- p+ geom_node_label(aes(label = V(G)$Blood), repel = TRUE, col = "red")
+  p <- p + geom_node_text(aes(label = V(G)$ES), repel = FALSE, nudge_x = -0.1, nudge_y = 0, col = "red")
+  p <- p + geom_node_point(size = 1)
+  p <- p + geom_node_label(aes(label = name, angle = 90), repel = FALSE, nudge_y = 0.25, col = "midnightblue")
+  #p <- p + geom_node_label(aes(label = name, angle = 90), repel = FALSE, nudge_y = 0.25, col = "midnightblue")
+  p <- p + theme_graph()
+
+  out$GSEAgraph <- p
+
+  return(out)
 }
 
-splitGroup <- function(sco_sub, ixs) {
-  downsample <- min(100, nrow(sco_sub@meta.data))
-  down_ixs <- c()
-  for(i in ixs) {
-    rxs <- which(sco_sub@meta.data$cellType == i)
-    downsample <- min(100, length(rxs))
-    rxs <- rxs[sample(length(rxs), downsample, replace = FALSE)]
-    down_ixs <- c(down_ixs, rxs)
-  }
-  sco_sub <- sco_sub[,down_ixs]
-  if(length(ixs) == 2) {
-    return(c(1,2))
-  }
-
-  sco_sub <- Seurat::NormalizeData(sco_sub)
-
-  #Find variable features
-  sco_sub <- Seurat::FindVariableFeatures(sco_sub, verbose = FALSE)
-
-  #Scale data
-  sco_sub <- Seurat::ScaleData(sco_sub, verbose = FALSE)
-
-  #Run PCA on the variable features. Get 50 dimensional embeddings
-  sco_sub <- Seurat::RunPCA(sco_sub, verbose = FALSE)
-  embeddings <- Seurat::Embeddings(object = sco_sub, reduction = 'pca')[,1:50]
-
-  pseudobulk <- matrix(0, nrow = 0, ncol = 50)
-  for(i in ixs) {
-    rxs <- which(sco_sub@meta.data$cellType == i)
-    pseudobulk <- rbind(pseudobulk, colMeans(embeddings[rxs,]))
-  }
-  #Cluster via k means
-  km <- kmeans(pseudobulk, centers = 2, iter.max = 10)$cluster
-
-  return(km)
-}
 
 Mode <- function(x) {
   xu <- unique(x)
   return(xu[which.max(tabulate(match(x, xu)))])
+}
+
+SplitGroup <- function(Sco_sub, ixs) {
+  #Find variable features
+  Sco_sub <- Seurat::FindVariableFeatures(Sco_sub, verbose = FALSE)
+
+  #Scale data
+  Sco_sub <- Seurat::ScaleData(Sco_sub)
+
+  #Run PCA on the variable features. Get 50 dimensional embeddings
+  Sco_sub <- Seurat::RunPCA(Sco_sub, verbose = FALSE)
+  embeddings <- Seurat::Embeddings(object = Sco_sub, reduction = 'pca')[,1:50]
+
+  #Cluster via k means
+  km <- kmeans(embeddings, centers = 2, iter.max = 10)$cluster
+
+  #Now we partition the clusters into one of two groups
+  out <- sapply(ixs-1, function(x) {
+    Mode(km[which(Sco_sub$seurat_clusters == x)])
+  })
+
+  return(out)
 }
 
 DFS <- function(Tree, node, cell_types) {
@@ -205,60 +338,64 @@ DFS <- function(Tree, node, cell_types) {
   return(leaves)
 }
 
-getPseudoBulkCounts <- function(sco, subtree) {
-  counts <- sco@assays$RNA@counts
-  pseudobulk <- matrix(0, nrow = nrow(counts), ncol = length(unique(sco@meta.data$patient)))
-  rownames(pseudobulk) <- rownames(counts)
-  response <- rep(0, ncol(pseudobulk))
-  for(i in 1:ncol(pseudobulk)) {
-    ixs <- which(sco@meta.data$patient == unique(sco@meta.data$patient)[i])
-    response[i] <- sco@meta.data$response[ixs[1]]
-  }
-  sco_sub <- sco[,sco$cellType %in% subtree]
-  counts <- sco_sub@assays$RNA@counts
-  for(i in 1:ncol(pseudobulk)) {
-    ixs <- which(sco_sub@meta.data$patient == unique(sco@meta.data$patient)[i])
-    if(length(ixs) == 0) {
-      pseudobulk[,i] <- 1
-    }
-    else if(length(ixs) == 1) {
-      pseudobulk[,i] <- counts[,ixs] + 1
-    }
-    else {
-      pseudobulk[,i] <- Matrix::rowSums(counts[,ixs]) + 1
-    }
-  }
-  colData <- data.frame(gene = c(1:length(response)), response = as.factor(response))
-  dds <- DESeq2::DESeqDataSetFromMatrix(countData = pseudobulk, colData = colData, design = ~response)
-  dds <- estimateSizeFactors(dds)
-  dds <- estimateDispersions(dds)
-  dds <- nbinomWaldTest(dds)
-  return(dds)
+DESeq2DETest <- function(
+  data.use,
+  cells.1,
+  cells.2,
+  verbose = TRUE,
+  ...
+) {
+  # if (!PackageCheck('DESeq2', error = FALSE)) {
+  #   stop("Please install DESeq2 - learn more at https://bioconductor.org/packages/release/bioc/html/DESeq2.html")
+  # }
+  group.info <- data.frame(row.names = c(cells.1, cells.2))
+  print(group.info)
+  group.info[cells.1, "group"] <- "Group1"
+  group.info[cells.2, "group"] <- "Group2"
+  group.info[, "group"] <- factor(x = group.info[, "group"])
+  group.info$wellKey <- rownames(x = group.info)
+  dds1 <- DESeq2::DESeqDataSetFromMatrix(
+    countData = data.use,
+    colData = group.info,
+    design = ~ group
+  )
+  dds1 <- DESeq2::DESeq(object = dds1, fitType = "local")
+  res <- DESeq2::lfcShrink(dds = dds1, coef = 2)
+  # to.return <- data.frame(p_val = res$pvalue, row.names = rownames(res))
+  return(res)
 }
 
-runDESeq <- function(counts, colData, response) {
-  dds <- DESeq2::DESeqDataSetFromMatrix(countData = counts, colData = colData, design = ~response)
-  dds <- DESeq2::DESeq(dds)
-  results <- DESeq2::results(dds)
-  return(results)
+mydeg <- function(sco.curr) {
+  exp.curr1 = sco.curr@assays$RNA@counts[sco.curr@assays$RNA@var.features,]
+  print(dim(exp.curr1))
+  meta.dt1 = sco.curr@meta.data %>%
+    as.data.table() %>%
+    .[,.(binaryResponse=binaryResponse, patient=patient)]
+
+  meta.curr = list()
+  exp.curr2 = list()
+  for(patient in unique(meta.dt1$patient)){
+    inx = which(meta.dt1$patient==patient)
+    exp.curr2[[patient]] = rowSums(as.matrix(exp.curr1[,inx]),na.rm=T)
+    meta.curr[[patient]] = meta.dt1[inx[1],]
+  }
+  meta.dt = do.call(rbind, meta.curr)
+  print(dim(meta.dt))
+  exp.curr = t(do.call(rbind, exp.curr2))
+  responders = meta.dt[binaryResponse==1]$patient
+  nonresponders = meta.dt[binaryResponse==0]$patient
+  print(responders)
+  print(nonresponders)
+  print(dim(exp.curr))
+  print(dim(exp.curr[,c(responders,nonresponders)]))
+  deseq.out = DESeq2DETest(data.use=exp.curr[,c(responders,nonresponders)], cells.1=responders, cells.2=nonresponders)
+  deseq.dt = deseq.out %>%
+    as.data.frame %>%
+    mutate(gene=rownames(.)) %>%
+    as.data.table() %>%
+    .[order(pvalue)] %>%
+    .[,padj:=p.adjust(pvalue, method="fdr")]
+  deseq.dt
 }
 
-permutation_test <- function(x, nperm, dds, stat, ncores) {
-  vec <- c(1:ncol(dds))
-  print(dds)
-  null_dist <- unlist(parallel::mclapply(c(1:nperm), function(i) {
-    vec <- sample(vec, size = length(vec), replace = FALSE)
-    dds$response <- dds$response[vec]
-    dds <- nbinomWaldTest(dds)
-    res <- results(dds)
-    y <- res$stat; names(y) <- rownames(res); y <- y[names(y) %in% names(x)]; y <- y[names(x)]
-    return(sum(x*y))
-  }, mc.cores = ncores))
-  print(null_dist)
-  hist(null_dist, main = "Null distribution histogram")
-  abline(v=stat, col = "red")
-  pval <- (sum(abs(null_dist) > abs(stat)) + 1)/(nperm + 1)
-  print("PVAL:"); print(pval)
-  return(pval)
-}
 

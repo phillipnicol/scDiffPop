@@ -55,15 +55,15 @@ setMethod("showTree", signature("scDiffPop"), function(object, type = "effect") 
     #p <- p + scale_alpha_manual(values = graph_data$intensity)
     p <- p + geom_node_label(aes(label = name, angle = 90), repel = FALSE, nudge_y = 0.25, col = "midnightblue")
     p <- p + theme_graph()
-    plot(p)
+    print(p)
   }
   if("pies" %in% type) {
     graph_data$pht1 <- counts[,1]; graph_data$pht2 <- counts[,2]
-    p <- ggraph(G, "manual", x=  V(G)$x, y=V(G)$y)+ geom_edge_link()
+    p <- ggraph(G, "manual", x=  V(G)$x, y=V(G)$y) + geom_edge_link()
     p <- p + geom_node_circle(aes(x0=x,y0=y,r=radius), colour = NA, show.legend = FALSE, data = graph_data, fill="white")
     p <- p + geom_scatterpie(
       aes(x=x, y=y, r=radius, alpha = forcats::fct_inorder(name)),
-      data = graph_data ,
+      data = graph_data,
       cols = c("pht1", "pht2"),
       colour = NA,
       legend_name = "Condition",
@@ -71,7 +71,7 @@ setMethod("showTree", signature("scDiffPop"), function(object, type = "effect") 
     p <- p + scale_fill_manual(values = c("blue", "red"), labels = c(object@meta.data$phenotypes[1], object@meta.data$phenotypes[2]))
     p <- p + geom_node_label(aes(label = name, angle = 90), repel = FALSE, nudge_y = 0.25, col = "midnightblue")
     p <- p + theme_graph()
-    plot(p)
+    print(p)
   }
 
 })
@@ -79,6 +79,7 @@ setMethod("showTree", signature("scDiffPop"), function(object, type = "effect") 
 showMarkerPlots <- function(object, nrow = 3, ncol = 3) 0
 setGeneric("showMarkerPlots")
 setMethod("showMarkerPlots", signature("scDiffPop"), function(object, nrow = 3, ncol = 3) {
+  par(mar = c(1,1,1,1))
   par(mfrow = c(nrow, ncol))
   nullList <- sapply(out@markers, function(genes) {
     plot(genes$x,genes$y,xlab="Marker Strength", ylab = "Phenotype stat", col = "white", main = genes$main)
