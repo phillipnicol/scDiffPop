@@ -6,17 +6,10 @@ setClass("scDiffPop", slots = list(results = "data.frame",
                                    markers = "list",
                                    pathways = "list"))
 
-scDiffPop <- function(sco, nmarkers = 25, use_seurat_clusters = FALSE, find_pathways = FALSE,
+scDiffPop <- function(sco, annotation = sco@meta.data$cellType, patient_id = sco@meta.data$patient,
+                      response = sco@meta.data$response, design = ~response,
+                      nmarkers = 25, use_seurat_clusters = FALSE, find_pathways = FALSE,
                       nperm = 250, nmarker = 25, ncores = 1) {
-  if(!("cellType" %in% colnames(sco@meta.data)) && !(use_seurat_clusters)) {
-    stop("Seurat object meta data must have column 'cellType.")
-  }
-  if(!("response" %in% colnames(sco@meta.data))) {
-    stop("Seurat object meta data must have column 'response'.")
-  }
-  if(length(unique(sco@meta.data$response)) != 2) {
-    stop("Response column must have exactly two unique elements.")
-  }
 
   ## If using seurat clusters, then the cell types are the cluster IDs.
   if(use_seurat_clusters) {
@@ -24,6 +17,12 @@ scDiffPop <- function(sco, nmarkers = 25, use_seurat_clusters = FALSE, find_path
     cell_types <- as.integer(sco$seurat_clusters)
     sco@meta.data$cellType <- sapply(cell_types, function(x) {paste("s", x, sep ="")})
   }
+  else {
+    sco@meta.data$cellType <- annotation
+  }
+
+  sco@meta.data$patient <- patient_id
+  sco@meta.data$response <- response
 
   ### Make the cell Tree
   Tree <- makeCellTree(sco)
@@ -47,8 +46,10 @@ scDiffPop <- function(sco, nmarkers = 25, use_seurat_clusters = FALSE, find_path
     markers <- Seurat::FindMarkers(sco, min.pct = 0.1, only.pos = TRUE, logfc.threshold = 0.25, ident.1 = 1)
     markers <- markers[1:min(nmarkers, nrow(markers)),]
 
-    x <- markers$avg_logFC; names(x) <- rownames(markers); x[x>10] <- 10; x <- x/max(x)
-    dds <- getPseudoBulkCounts(sco, subtree)
+    markers$p_val_adj[markers$p_val_adj == 0] <- .Machine$double.xmin
+    markers$l2FC
+    x <- -log(markers$p_val_adj,base=10); names(x) <- rownames(markers)
+    dds <- getPseudoBulkCounts(sco, subtree, design)
     res <- results(dds)
     print("DESEQ Complete")
     y <- res$stat; names(y) <- rownames(res); y <- y[names(y) %in% names(x)]; y <- y[names(x)]
@@ -206,14 +207,17 @@ DFS <- function(Tree, node, cell_types) {
   return(leaves)
 }
 
-getPseudoBulkCounts <- function(sco, subtree) {
+getPseudoBulkCounts <- function(sco, subtree, design) {
   counts <- sco@assays$RNA@counts
   pseudobulk <- matrix(0, nrow = nrow(counts), ncol = length(unique(sco@meta.data$patient)))
   rownames(pseudobulk) <- rownames(counts)
   response <- rep(0, ncol(pseudobulk))
+  pseudoMetaData <- matrix(0, nrow = ncol(pseudobulk), ncol = ncol(sco@meta.data))
+  pseudoMetaData <- as.data.frame(pseudoMetaData); colnames(pseudoMetaData) <- colnames(sco@meta.data)
   for(i in 1:ncol(pseudobulk)) {
     ixs <- which(sco@meta.data$patient == unique(sco@meta.data$patient)[i])
     response[i] <- sco@meta.data$response[ixs[1]]
+    pseudoMetaData[i,] <- sco@meta.data[ixs[1],]
   }
   sco_sub <- sco[,sco$cellType %in% subtree]
   counts <- sco_sub@assays$RNA@counts
@@ -229,8 +233,14 @@ getPseudoBulkCounts <- function(sco, subtree) {
       pseudobulk[,i] <- Matrix::rowSums(counts[,ixs]) + 1
     }
   }
-  colData <- data.frame(gene = c(1:length(response)), response = as.factor(response))
-  dds <- DESeq2::DESeqDataSetFromMatrix(countData = pseudobulk, colData = colData, design = ~response)
+
+  for(i in 1:ncol(pseudoMetaData)) {
+    pseudoMetaData[,i] <- as.factor(pseudoMetaData[,i])
+  }
+  #colData <- data.frame(gene = c(1:length(response)), response = as.factor(response))
+  colData <- data.frame(gene = c(1:length(response)))
+  colData <- cbind(colData, pseudoMetaData)
+  dds <- DESeq2::DESeqDataSetFromMatrix(countData = pseudobulk, colData = colData, design = design)
   dds <- estimateSizeFactors(dds)
   dds <- estimateDispersions(dds)
   dds <- nbinomWaldTest(dds)

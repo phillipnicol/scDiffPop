@@ -28,9 +28,10 @@ setMethod("showTree", signature("scDiffPop"), function(object, type = "effect") 
   graph_data$intensity <- graph_data$intensity
   graph_data$transparency <- rep(0.25, nrow(graph_data))
 
+  print(length(V(G)$name))
+  print(out@results$padj)
   for(i in 2:length(V(G)$name)) {
     s <- out@results$padj[i-1]
-    print(s)
     if(s < 0.01) {
       V(G)$name[i] <- paste(graph_data$name[i], "***")
       graph_data$transparency[i] <- 1
@@ -52,6 +53,13 @@ setMethod("showTree", signature("scDiffPop"), function(object, type = "effect") 
     #p <- p + scale_fill_manual(values = graph_data$color)
     p <- p + scale_fill_gradient2(low = "turquoise", mid = "white", high = "hotpink1", guide = "colourbar",
                                   name = "", breaks = c(-1, 1), labels = c(object@meta.data$phenotypes[1], object@meta.data$phenotypes[2]), limits = c(-1,1))
+    #p <- p + scale_alpha_manual(values = graph_data$intensity)
+    p <- p + geom_node_label(aes(label = name, angle = 90), repel = FALSE, nudge_y = 0.25, col = "midnightblue")
+    p <- p + theme_graph()
+    print(p)
+
+    p <- ggraph(G, "manual", x= V(G)$x, y=V(G)$y) + geom_edge_link()
+    p <- p + geom_node_circle(aes(x0=x,y0=y,r=radius), colour = "black", show.legend = FALSE, data = graph_data, fill="black")
     #p <- p + scale_alpha_manual(values = graph_data$intensity)
     p <- p + geom_node_label(aes(label = name, angle = 90), repel = FALSE, nudge_y = 0.25, col = "midnightblue")
     p <- p + theme_graph()
