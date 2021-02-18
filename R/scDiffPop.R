@@ -6,10 +6,14 @@ setClass("scDiffPop", slots = list(results = "data.frame",
                                    markers = "list",
                                    pathways = "list"))
 
-scDiffPop <- function(sco, annotation = sco@meta.data$cellType, patient_id = sco@meta.data$patient,
-                      response = sco@meta.data$response, design = ~response,
-                      nmarkers = 25, use_seurat_clusters = FALSE, find_pathways = FALSE,
-                      nperm = 250, nmarker = 25, ncores = 1) {
+scDiffPop <- function(sco, annotation = sco@meta.data$cellType,
+                      patient_id = sco@meta.data$patient,
+                      response = sco@meta.data$response,
+                      nmarkers = 25, use_seurat_clusters = FALSE,
+                      find_pathways = FALSE,
+                      nperm = 250,
+                      nmarker = 25,
+                      ncores = 1) {
 
   ## If using seurat clusters, then the cell types are the cluster IDs.
   if(use_seurat_clusters) {
@@ -30,7 +34,7 @@ scDiffPop <- function(sco, annotation = sco@meta.data$cellType, patient_id = sco
   cell_types <- unique(sco@meta.data$cellType)
   phenotypes <- sort(unique(sco@meta.data$response))
   results <- data.frame(group = Tree[,1], enrichment = rep(0, nrow(Tree)), effect = rep(0, nrow(Tree)), pval = rep(0, nrow(Tree)),
-                        padj = rep(0, nrow(Tree)))
+                        padj = rep(0, nrow(Tree), hetero = rep(0, nrow(Tree))))
   marker_list <- list()
   counts <- matrix(0, nrow = nrow(Tree)+1, ncol = 2); colnames(counts) <- c(phenotypes[1], phenotypes[2])
   counts[1,] <- c(length(which(sco@meta.data$response == phenotypes[1])), length(which(sco@meta.data$response == phenotypes[2])))
@@ -48,14 +52,12 @@ scDiffPop <- function(sco, annotation = sco@meta.data$cellType, patient_id = sco
 
     markers$p_val_adj[markers$p_val_adj == 0] <- .Machine$double.xmin
     markers$l2FC
-    x <- -log(markers$p_val_adj,base=10); names(x) <- rownames(markers)
+    x <- rep(1, nmarkers); names(x) <- rownames(markers)
     dds <- getPseudoBulkCounts(sco, subtree, design)
     res <- results(dds)
     print("DESEQ Complete")
     y <- res$stat; names(y) <- rownames(res); y <- y[names(y) %in% names(x)]; y <- y[names(x)]
     dds <- dds[rownames(dds) %in% names(x),]
-    plot(x,y,xlab="Marker Strength", ylab = "Phenotype stat", col = "white")
-    text(x,y,labels=names(x), cex = 0.5)
 
     genes_use <- list()
     genes_use$main <- Tree[i,1]
@@ -65,10 +67,11 @@ scDiffPop <- function(sco, annotation = sco@meta.data$cellType, patient_id = sco
     print(x); print(y)
     stat <- sum(x*y)
     print("STAT:"); print(stat/nmarkers)
-    print("VARIANCE:"); print(var(x*y))
     pval <- permutation_test(x, nperm, dds, stat, ncores)
     results$effect[i] <- stat/nmarkers
     results$pval[i] <- pval
+
+
     ifelse(stat > 0, results$enrichment[i] <- phenotypes[2], results$enrichment[i] <- phenotypes[1])
   }
   results$padj <- p.adjust(results$pval, method = "fdr")
@@ -207,7 +210,7 @@ DFS <- function(Tree, node, cell_types) {
   return(leaves)
 }
 
-getPseudoBulkCounts <- function(sco, subtree, design) {
+getPseudoBulkCounts <- function(sco, subtree, response) {
   counts <- sco@assays$RNA@counts
   pseudobulk <- matrix(0, nrow = nrow(counts), ncol = length(unique(sco@meta.data$patient)))
   rownames(pseudobulk) <- rownames(counts)
@@ -234,13 +237,8 @@ getPseudoBulkCounts <- function(sco, subtree, design) {
     }
   }
 
-  for(i in 1:ncol(pseudoMetaData)) {
-    pseudoMetaData[,i] <- as.factor(pseudoMetaData[,i])
-  }
-  #colData <- data.frame(gene = c(1:length(response)), response = as.factor(response))
-  colData <- data.frame(gene = c(1:length(response)))
-  colData <- cbind(colData, pseudoMetaData)
-  dds <- DESeq2::DESeqDataSetFromMatrix(countData = pseudobulk, colData = colData, design = design)
+  colData <- data.frame(gene = c(1:length(response)), response = as.factor(response))
+  dds <- DESeq2::DESeqDataSetFromMatrix(countData = pseudobulk, colData = colData, design = ~response)
   dds <- estimateSizeFactors(dds)
   dds <- estimateDispersions(dds)
   dds <- nbinomWaldTest(dds)
