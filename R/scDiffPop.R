@@ -264,8 +264,6 @@ permutation_test <- function(x, nperm, dds, stat, ncores) {
     return(sum(x*y))
   }, mc.cores = ncores))
   print(null_dist)
-  hist(null_dist, main = "Null distribution histogram")
-  abline(v=stat, col = "red")
   pval <- (sum(abs(null_dist) > abs(stat)) + 1)/(nperm + 1)
   print("PVAL:"); print(pval)
   return(pval)
