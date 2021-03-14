@@ -28,13 +28,16 @@ scDiffPop <- function(sco, annotation = sco@meta.data$cellType,
   sco@meta.data$patient <- patient_id
   sco@meta.data$response <- response
 
+
   ### Make the cell Tree
   Tree <- makeCellTree(sco)
 
   cell_types <- unique(sco@meta.data$cellType)
   phenotypes <- sort(unique(sco@meta.data$response))
   results <- data.frame(group = Tree[,1], enrichment = rep(0, nrow(Tree)), effect = rep(0, nrow(Tree)), pval = rep(0, nrow(Tree)),
-                        padj = rep(0, nrow(Tree), hetero = rep(0, nrow(Tree))))
+                        padj = rep(0, nrow(Tree)), hetero = rep(0, nrow(Tree)),
+                        lm_coef=rep(0,nrow(Tree)), lm_pval=rep(0,nrow(Tree)),
+                        rpca_coef=rep(0,nrow(Tree)),rpca_pval=rep(0,nrow=Tree))
   marker_list <- list()
   counts <- matrix(0, nrow = nrow(Tree)+1, ncol = 2); colnames(counts) <- c(phenotypes[1], phenotypes[2])
   counts[1,] <- c(length(which(sco@meta.data$response == phenotypes[1])), length(which(sco@meta.data$response == phenotypes[2])))
@@ -71,6 +74,30 @@ scDiffPop <- function(sco, annotation = sco@meta.data$cellType,
     results$effect[i] <- stat/nmarkers
     results$pval[i] <- pval
 
+    print("Running mixed effects model")
+    y <- ifelse(sco@meta.data$cellType %in% subtree, 1, 0)
+    lm.data <- data.frame(y=y,response=sco@meta.data$response,patient=sco@meta.data$patient)
+    fit <- glmer(y~response + (1|patient),family="binomial",data=lm.data)
+    print(summary(fit))
+    results$lm_coef[i] <- summary(fit)$coefficients[2,1]
+    results$lm_pval[i] <- summary(fit)$coefficients[2,4]
+
+    ## PCA MODEL
+    embeddings <- sco@reductions$pca@cell.embeddings[sco@meta.data$cellType %in% subtree,]
+    npcs <- 50
+    coefs <- rep(0, npcs)
+    tvals <- rep(1,npcs)
+    for(j in 1:npcs) {
+      print(j)
+      lm.data <- data.frame(y=embeddings[,j],response=sco@meta.data$response[sco@meta.data$cellType %in% subtree],
+                            patient=sco@meta.data$patient[sco@meta.data$cellType %in% subtree])
+      try({fit <- lmer(y ~ response + (1|patient),data=lm.data)
+      sumfit <- summary(fit)
+      coefs[j] <- sumfit$coefficients[2,1]
+      tvals[j] <- sumfit$coefficients[2,5]})
+    }
+    results$rpca_coef[i] <- sqrt(sum(coefs^2))
+    results$rpca_pval[i] <- min(tvals)
 
     ifelse(stat > 0, results$enrichment[i] <- phenotypes[2], results$enrichment[i] <- phenotypes[1])
   }
